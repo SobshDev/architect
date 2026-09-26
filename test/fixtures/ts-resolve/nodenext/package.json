@@ -1,0 +1,7 @@
+{
+  "name": "nn",
+  "type": "module",
+  "imports": {
+    "#util": "./src/util.ts"
+  }
+}

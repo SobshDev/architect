@@ -1,0 +1,3 @@
+{
+  "compilerOptions": { "module": "Preserve", "moduleResolution": "bundler", "strict": true, "allowImportingTsExtensions": true, "noEmit": true }
+}

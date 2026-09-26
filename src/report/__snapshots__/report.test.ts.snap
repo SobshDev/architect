@@ -1,0 +1,440 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`golden outputs text 1`] = `
+"config warn .architect/rules.yaml rules[2].level: rule is off
+
+error  acyclic  cycle: a -> b -> a
+  because: decision 0001
+
+error  no-ui-to-db  ui imports db
+  at src/ui/page.ts:3
+  because: decision 0002, 0004
+  fix: Go through the service layer.
+
+warn   state-owner  billing writes users
+  at src/billing/pay.ts:12
+  fix: Call the users module instead.
+
+unapproved weakening  layers  level-lowered: layers lowered from error to warn
+  - ui -> db is now allowed
+
+approved weakening  no-cycles  rule-removed: no-cycles was removed
+  approved by decision 0007
+
+API changes in core:
+  removed  src/core/index.ts  old
+    - const old: 1
+  changed  src/core/index.ts  run
+    - function run(): void
+    + function run(x: number): void
+
+2 errors, 1 warning, 1 info, 1 existing, 1 baselined, 1 waived, 3 fixed (run architect baseline update to lock in progress), 1 unapproved weakening, 1 approved weakening, 2 API changes
+Analyzed 312 files; 2 unmapped, 1 unresolved import, 1 dynamic import
+"
+`;
+
+exports[`golden outputs text verbose 1`] = `
+"config warn .architect/rules.yaml rules[2].level: rule is off
+
+error  acyclic  cycle: a -> b -> a
+  because: decision 0001
+
+error  no-ui-to-db  ui imports db
+  at src/ui/page.ts:3
+  because: decision 0002, 0004
+  fix: Go through the service layer.
+
+warn   state-owner  billing writes users
+  at src/billing/pay.ts:12
+  fix: Call the users module instead.
+
+info   hub-component  core has 14 dependents
+
+error  no-ui-to-db  ui imports db  [existing]
+  at src/ui/legacy.ts
+  because: decision 0002
+
+error  no-ui-to-db  ui imports db  [baselined]
+  at src/ui/old.ts:7
+  because: decision 0002
+
+error  no-ui-to-db  ui imports db  [waived]
+  at src/ui/waived.ts:1
+  because: decision 0002
+
+unapproved weakening  layers  level-lowered: layers lowered from error to warn
+  - ui -> db is now allowed
+
+approved weakening  no-cycles  rule-removed: no-cycles was removed
+  approved by decision 0007
+
+API changes in core:
+  removed  src/core/index.ts  old
+    - const old: 1
+  changed  src/core/index.ts  run
+    - function run(): void
+    + function run(x: number): void
+
+fixed baseline entries:
+  no-ui-to-db  src/ui/gone.ts -> db  x3
+
+unmapped files:
+  scripts/a.ts
+  scripts/b.ts
+
+unresolved imports:
+  src/x.ts:4  ./missing
+
+dynamic imports:
+  src/y.ts:9  import(name)
+
+2 errors, 1 warning, 1 info, 1 existing, 1 baselined, 1 waived, 3 fixed (run architect baseline update to lock in progress), 1 unapproved weakening, 1 approved weakening, 2 API changes
+Analyzed 312 files; 2 unmapped, 1 unresolved import, 1 dynamic import
+"
+`;
+
+exports[`golden outputs markdown 1`] = `
+"### Architect: 2 new errors, 1 unapproved weakening
+
+- config warn .architect/rules.yaml rules[2].level: rule is off
+
+#### New errors
+
+| Rule | Location | Message | Because |
+|---|---|---|---|
+| acyclic |  | cycle: a -> b -> a | 0001 |
+| no-ui-to-db | \`src/ui/page.ts:3\` | ui imports db | 0002, 0004 |
+
+#### Weakenings that need human approval
+
+- **layers** (level-lowered): layers lowered from error to warn
+  - ui -> db is now allowed
+
+- **no-cycles** (rule-removed): no-cycles was removed (Approved by decision 0007)
+
+#### Fixed baseline entries
+
+- \`no-ui-to-db\` src/ui/gone.ts → db (×3)
+
+Run \`architect baseline update\` to lock in progress.
+
+#### Coverage
+
+312 files analyzed (python 12, typescript 300); 2 unmapped files, 1 unresolved import, 1 dynamic import, 0 parse errors.
+
+<details>
+<summary>Unmapped files (2)</summary>
+
+- \`scripts/a.ts\`
+- \`scripts/b.ts\`
+
+</details>
+
+<details>
+<summary>Unresolved imports (1)</summary>
+
+- \`src/x.ts:4\` \`./missing\`
+
+</details>
+
+<details>
+<summary>Dynamic imports (1)</summary>
+
+- \`src/y.ts:9\` \`import(name)\`
+
+</details>
+
+<details>
+<summary>1 new warning</summary>
+
+| Rule | Location | Message | Because |
+|---|---|---|---|
+| state-owner | \`src/billing/pay.ts:12\` | billing writes users |  |
+
+</details>
+
+<details>
+<summary>2 API changes</summary>
+
+| Component | Change | Symbol | File |
+|---|---|---|---|
+| core | removed | \`old\` | src/core/index.ts |
+| core | changed | \`run\` | src/core/index.ts |
+
+</details>
+"
+`;
+
+exports[`golden outputs sarif 1`] = `
+"{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "architect",
+          "version": "0.0.0-test",
+          "informationUri": "https://github.com/SobshDev/architect",
+          "rules": [
+            {
+              "id": "acyclic",
+              "shortDescription": {
+                "text": "acyclic"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "hub-component",
+              "shortDescription": {
+                "text": "hub-component"
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "no-ui-to-db",
+              "shortDescription": {
+                "text": "UI never touches the database"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "state-owner",
+              "shortDescription": {
+                "text": "state-owner"
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
+              "id": "unapproved-weakening",
+              "shortDescription": {
+                "text": "unapproved-weakening"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "acyclic",
+          "level": "error",
+          "message": {
+            "text": "cycle: a -> b -> a"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/a/x.ts",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "architect/v1": "cccc"
+          },
+          "baselineState": "new",
+          "properties": {
+            "because": [
+              "0001"
+            ],
+            "from": "a",
+            "to": "b",
+            "kind": "acyclic"
+          },
+          "relatedLocations": [
+            {
+              "id": 1,
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/a/x.ts",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            },
+            {
+              "id": 2,
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/b/y.ts",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 2
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "no-ui-to-db",
+          "level": "error",
+          "message": {
+            "text": "ui imports db"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/ui/legacy.ts",
+                  "uriBaseId": "%SRCROOT%"
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "architect/v1": "eeee"
+          },
+          "baselineState": "unchanged",
+          "properties": {
+            "because": [
+              "0002"
+            ],
+            "from": "ui",
+            "to": "db",
+            "kind": "forbid"
+          }
+        },
+        {
+          "ruleId": "no-ui-to-db",
+          "level": "error",
+          "message": {
+            "text": "ui imports db Fix: Go through the service layer."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/ui/page.ts",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 3
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "architect/v1": "aaaa000000000001"
+          },
+          "baselineState": "new",
+          "properties": {
+            "because": [
+              "0002",
+              "0004"
+            ],
+            "from": "ui",
+            "to": "db",
+            "kind": "forbid"
+          }
+        },
+        {
+          "ruleId": "state-owner",
+          "level": "warning",
+          "message": {
+            "text": "billing writes users Fix: Call the users module instead."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/billing/pay.ts",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 12
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "architect/v1": "bbbb"
+          },
+          "baselineState": "new",
+          "properties": {
+            "because": [],
+            "from": "ui",
+            "to": "db",
+            "kind": "state-owner"
+          }
+        },
+        {
+          "ruleId": "hub-component",
+          "level": "note",
+          "message": {
+            "text": "core has 14 dependents"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": ".architect/architecture.yaml",
+                  "uriBaseId": "%SRCROOT%"
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "architect/v1": "gggg"
+          },
+          "baselineState": "new",
+          "properties": {
+            "because": [],
+            "from": "ui",
+            "to": "db",
+            "kind": "metric",
+            "heuristic": true
+          }
+        },
+        {
+          "ruleId": "unapproved-weakening",
+          "level": "error",
+          "message": {
+            "text": "layers lowered from error to warn Details: ui -> db is now allowed. Record an accepted decision that lists layers in weakens."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": ".architect/rules.yaml",
+                  "uriBaseId": "%SRCROOT%"
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "architect/v1": "e2f2f5009d5ded42"
+          },
+          "baselineState": "new",
+          "properties": {
+            "rule": "layers",
+            "type": "level-lowered",
+            "details": [
+              "ui -> db is now allowed"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
+"
+`;

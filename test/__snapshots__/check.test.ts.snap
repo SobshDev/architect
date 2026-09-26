@@ -1,0 +1,120 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`check on the shop fixture reports new errors, keeps the baselined cycle, and matches the golden report 1`] = `
+{
+  "api_changes": [],
+  "command": "check",
+  "config_issues": [],
+  "coverage": {
+    "dynamic_imports": [],
+    "files_analyzed": 5,
+    "languages": {
+      "typescript": 5,
+    },
+    "parse_errors": [],
+    "unmapped_files": [],
+    "unresolved_imports": [],
+  },
+  "exit_code": 1,
+  "findings": [
+    {
+      "because": [
+        "0002",
+      ],
+      "fingerprint": "7077b3adbec19633",
+      "fix_hint": "The domain holds business rules and knows nothing about storage or delivery. Remove this dependency: depend on a port owned by domain and implement it outside, or move the code to a component the rule allows. If the rule itself is wrong, change it with a decision that lists it in weakens.",
+      "from": "domain",
+      "kind": "forbid",
+      "level": "error",
+      "location": {
+        "file": "src/domain/order.ts",
+        "line": 1,
+      },
+      "message": "src/domain/order.ts imports src/infra/db.ts (domain → infra), which rule domain-is-pure forbids.",
+      "rule": "domain-is-pure",
+      "status": "new",
+      "to": "infra",
+    },
+    {
+      "because": [
+        "0002",
+      ],
+      "fingerprint": "05025bbefc0ff413",
+      "fix_hint": "Invert the dependency with an interface owned by domain that infra implements, or move the shared code down to domain or below. If the rule itself is wrong, change it with a decision that lists it in weakens.",
+      "from": "domain",
+      "kind": "layers",
+      "level": "error",
+      "location": {
+        "file": "src/domain/order.ts",
+        "line": 1,
+      },
+      "message": "src/domain/order.ts imports src/infra/db.ts (domain → infra), which breaks rule layering: layer domain must not depend on the higher layer infra.",
+      "rule": "layering",
+      "status": "new",
+      "to": "infra",
+    },
+    {
+      "because": [
+        "0002",
+      ],
+      "fingerprint": "a9aedfe53d11dac6",
+      "fix_hint": "Break the cycle by moving the shared piece down into a component both sides can depend on, or invert one dependency with an interface. If the rule itself is wrong, change it with a decision that lists it in weakens.",
+      "from": "domain",
+      "kind": "acyclic",
+      "level": "error",
+      "location": {
+        "file": "src/domain/order.ts",
+        "line": 1,
+      },
+      "message": "Components domain → infra → domain form a dependency cycle, which rule no-cycles forbids.",
+      "related": [
+        {
+          "file": "src/domain/order.ts",
+          "line": 1,
+        },
+        {
+          "file": "src/infra/db.ts",
+          "line": 1,
+        },
+      ],
+      "rule": "no-cycles",
+      "status": "baselined",
+    },
+    {
+      "because": [],
+      "fingerprint": "e23cf1e30d963b29",
+      "fix_hint": "Import from domain's entrypoint (src/domain/index.ts) instead, and export what you need there if it is missing. If the rule itself is wrong, change it with a decision that lists it in weakens.",
+      "from": "infra",
+      "kind": "entrypoints",
+      "level": "warn",
+      "location": {
+        "file": "src/infra/db.ts",
+        "line": 1,
+      },
+      "message": "src/infra/db.ts imports src/domain/order.ts (infra → domain), which is not an entrypoint of domain, as rule domain-entrypoint requires.",
+      "rule": "domain-entrypoint",
+      "status": "new",
+      "to": "domain",
+    },
+  ],
+  "fixed": [],
+  "schema_version": 1,
+  "scope": "all",
+  "summary": {
+    "baselined": 1,
+    "errors": 2,
+    "existing": 0,
+    "fixed": 0,
+    "info": 0,
+    "unapproved_weakenings": 0,
+    "waived": 0,
+    "warnings": 1,
+    "weakenings": 0,
+  },
+  "tool": {
+    "name": "architect",
+    "version": "test",
+  },
+  "weakenings": [],
+}
+`;

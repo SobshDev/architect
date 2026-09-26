@@ -1,0 +1,24 @@
+version: 1
+rules:
+  - id: domain-is-pure
+    kind: forbid
+    description: The domain holds business rules and knows nothing about storage or delivery.
+    from: [domain]
+    to: [infra, app]
+    because: ["0002"]
+  - id: no-cycles
+    kind: acyclic
+    because: ["0002"]
+  - id: domain-entrypoint
+    kind: entrypoints
+    targets: [domain]
+    level: warn
+  - id: domain-no-packages
+    kind: external-imports
+    from: [domain]
+    allow: []
+    because: ["0002"]
+  - id: layering
+    kind: layers
+    layers: [app, infra, domain]
+    because: ["0002"]

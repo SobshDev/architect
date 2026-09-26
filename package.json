@@ -30,7 +30,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun test",
-    "check": "bun run typecheck && bun test",
+    "check": "bun run typecheck && bun test && bun src/cli/main.ts check",
     "corpus:fetch": "bun scripts/corpus-fetch.ts"
   },
   "dependencies": {

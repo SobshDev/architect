@@ -1,0 +1,10 @@
+version: 1
+name: shop
+components:
+  - id: domain
+    paths: [src/domain]
+    entrypoints: [src/domain/index.ts]
+  - id: infra
+    paths: [src/infra]
+  - id: app
+    paths: [src/app]

@@ -1,0 +1,1 @@
+{ "compilerOptions": { "composite": true, "paths": { "@core/*": ["../core/src/*"] } }, "references": [{ "path": "../core" }] }

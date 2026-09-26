@@ -1,0 +1,4 @@
+{
+  "name": "@acme/nomap",
+  "main": "dist/bundle.js"
+}

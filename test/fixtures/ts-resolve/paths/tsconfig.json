@@ -1,0 +1,4 @@
+{
+  // comments are allowed
+  "compilerOptions": { "baseUrl": ".", "paths": { "@/*": ["src/*"], "~lib": ["lib/index.ts"] } }
+}

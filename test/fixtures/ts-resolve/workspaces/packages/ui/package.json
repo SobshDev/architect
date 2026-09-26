@@ -1,0 +1,14 @@
+{
+  "name": "@acme/ui",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./components/*": {
+      "types": "./dist/components/*.d.ts",
+      "default": "./dist/components/*.js"
+    },
+    "./package.json": "./package.json"
+  }
+}

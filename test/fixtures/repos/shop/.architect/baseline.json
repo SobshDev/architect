@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "fingerprint": "a9aedfe53d11dac6",
+      "rule": "no-cycles",
+      "count": 1,
+      "from": "domain",
+      "message": "Components domain and infra form a cycle."
+    }
+  ]
+}
