@@ -1,6 +1,8 @@
 // Weakening detection: every way head's contract lets through code that base's contract blocked.
 import {
+  anySelectorMatches,
   type BaselineEntry,
+  ComponentIndex,
   type Decision,
   type Finding,
   type LayersRule,
@@ -20,7 +22,12 @@ const SEMANTIC_SKIP: readonly Rule["kind"][] = ["api-stability", "deprecated"];
 
 /** Finds syntactic and semantic loosening between base and head, marking each with the head decision that approves it. */
 export function detectWeakenings(base: WorkspaceState, head: WorkspaceState, options: { today: string }): Weakening[] {
-  const found: Weakening[] = [...ruleWeakenings(base, head), ...waiverWeakenings(base, head, options.today), ...baselineWeakenings(base, head)];
+  const found: Weakening[] = [
+    ...ruleWeakenings(base, head),
+    ...componentWeakenings(base, head),
+    ...waiverWeakenings(base, head, options.today),
+    ...baselineWeakenings(base, head),
+  ];
   sortWeakenings(found);
 
   for (const semantic of semanticWeakenings(base, head, options.today)) {
@@ -32,7 +39,7 @@ export function detectWeakenings(base: WorkspaceState, head: WorkspaceState, opt
 
   const approvals = approvingDecisions(base.decisions, head.decisions);
   for (const w of found) {
-    const approver = approvals.find((a) => a.weakens.has(w.rule) || (w.type === "baseline-grown" && a.weakens.has("baseline")));
+    const approver = approverOf(approvals, w.rule, w.type === "baseline-grown");
     if (approver) w.approved_by = approver.id;
   }
   return found;
@@ -48,6 +55,50 @@ function compare(a: string, b: string): number {
 
 function weakening(rule: string, type: WeakeningType, message: string, details: string[] = []): Weakening {
   return { rule, type, message, details };
+}
+
+// ---------------------------------------------------------------- architecture.yaml
+
+/**
+ * Component edits that loosen a diff-only rule without touching rules.yaml: a component covered by a deprecated
+ * rule that loses its deprecated mark, or a component covered by an api-stability rule whose base entrypoint files
+ * are no longer entrypoints. Removed rules are left to rule-removed.
+ */
+function componentWeakenings(base: WorkspaceState, head: WorkspaceState): Weakening[] {
+  const baseMap = new ComponentIndex(base.architecture.components, base.graph.workspaces);
+  const headMap = new ComponentIndex(head.architecture.components, head.graph.workspaces);
+  const headFiles = new Set(head.graph.files.map((f) => f.path));
+  const marked = (map: ComponentIndex, id: string) => {
+    const deprecated = map.get(id)?.deprecated;
+    return deprecated !== undefined && deprecated !== false;
+  };
+  const out: Weakening[] = [];
+  for (const rule of head.rules.rules) {
+    if (rule.level === "off") continue;
+    if (rule.kind === "deprecated") {
+      // A rule with selectors covers its components whether or not they are marked.
+      if (rule.components !== undefined) continue;
+      for (const id of baseMap.ids()) {
+        if (marked(baseMap, id) && !marked(headMap, id)) {
+          out.push(weakening(rule.id, "component-changed", `Component ${id} is no longer marked deprecated, so rule ${rule.id} stops protecting it.`));
+        }
+      }
+    }
+    if (rule.kind === "api-stability") {
+      for (const id of baseMap.ids()) {
+        if (!anySelectorMatches(rule.components, { component: id, external: false })) continue;
+        const lost = base.graph.files
+          .map((f) => f.path)
+          .filter((path) => baseMap.of(path) === id && baseMap.isEntrypoint(id, path) && headFiles.has(path))
+          .filter((path) => headMap.of(path) !== id || !headMap.isEntrypoint(id, path))
+          .sort(compare);
+        if (lost.length === 0) continue;
+        const files = lost.length === 1 ? "entrypoint" : "entrypoints";
+        out.push(weakening(rule.id, "component-changed", `Component ${id} dropped ${lost.length} ${files} that rule ${rule.id} checks.`, lost));
+      }
+    }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- rules.yaml
@@ -204,14 +255,26 @@ function minus(a: readonly string[], b: readonly string[]): string[] {
 // ---------------------------------------------------------------- waivers
 
 function waiverWeakenings(base: WorkspaceState, head: WorkspaceState, today: string): Weakening[] {
-  const key = (w: Waiver) => JSON.stringify([w.rule, w.from, w.to ?? null, w.expires, w.reason, w.decision ?? null]);
-  const known = new Set(base.rules.waivers.map(key));
-  return head.rules.waivers
-    .filter((w) => w.expires >= today && !known.has(key(w)))
-    .map((w) => {
-      const scope = w.to === undefined ? `${w.from} (every target)` : `${w.from} → ${w.to}`;
-      return weakening(w.rule, "waiver-added", `New waiver for rule ${w.rule}: ${scope} until ${w.expires}.`, [w.reason]);
-    });
+  // A waiver's identity is what it waives; rewording the reason or citing another decision loosens nothing.
+  const key = (w: Waiver) => JSON.stringify([w.rule, w.from, w.to ?? null]);
+  const known = new Map<string, string>();
+  for (const w of base.rules.waivers) {
+    const prior = known.get(key(w));
+    if (prior === undefined || w.expires > prior) known.set(key(w), w.expires);
+  }
+  const out: Weakening[] = [];
+  for (const w of head.rules.waivers) {
+    if (w.expires < today) continue;
+    const was = known.get(key(w));
+    if (was !== undefined && w.expires <= was) continue;
+    const scope = w.to === undefined ? `${w.from} (every target)` : `${w.from} → ${w.to}`;
+    const message =
+      was === undefined
+        ? `New waiver for rule ${w.rule}: ${scope} until ${w.expires}.`
+        : `Waiver for rule ${w.rule} extended: ${scope} until ${w.expires} (was ${was}).`;
+    out.push(weakening(w.rule, "waiver-added", message, [w.reason]));
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- baseline.json
@@ -286,18 +349,39 @@ function semanticWeakenings(base: WorkspaceState, head: WorkspaceState, today: s
 
 // ---------------------------------------------------------------- approval
 
-interface Approval {
+export interface Approval {
   id: string;
+  /** The weakens ids this decision newly lists relative to its base version. */
   weakens: Set<string>;
 }
 
-/** Accepted head decisions that are new or changed their weakens list, lowest id first. */
-function approvingDecisions(baseDecisions: readonly Decision[], headDecisions: readonly Decision[]): Approval[] {
+/** The first approval that lists the rule (or "baseline", for baseline growth). */
+export function approverOf(approvals: readonly Approval[], rule: string, baselineGrowth = false): Approval | undefined {
+  return approvals.find((a) => a.weakens.has(rule) || (baselineGrowth && a.weakens.has("baseline")));
+}
+
+/**
+ * Accepted head decisions with weakens ids that are new relative to their base version, lowest id first. A head
+ * decision's base version has the same id, else the same normalized title, so renumbering or copying a decision
+ * does not re-arm it. When the base version was not accepted, or there is none, every weakens id counts.
+ */
+export function approvingDecisions(baseDecisions: readonly Decision[], headDecisions: readonly Decision[]): Approval[] {
   const norm = (id: string) => normalizeDecisionId(id) ?? id;
-  const listKey = (d: Decision) => JSON.stringify([...new Set(d.weakens)].sort(compare));
-  const before = new Map(baseDecisions.map((d) => [norm(d.id), listKey(d)]));
+  const title = (d: Decision) => d.title.toLowerCase().replace(/\s+/g, " ").trim();
+  const byId = new Map<string, Decision>();
+  const byTitle = new Map<string, Decision>();
+  for (const d of baseDecisions) {
+    if (!byId.has(norm(d.id))) byId.set(norm(d.id), d);
+    if (!byTitle.has(title(d))) byTitle.set(title(d), d);
+  }
   return headDecisions
-    .filter((d) => d.status === "accepted" && d.weakens.length > 0 && before.get(norm(d.id)) !== listKey(d))
-    .sort((a, b) => compare(norm(a.id), norm(b.id)) || compare(a.id, b.id))
-    .map((d) => ({ id: d.id, weakens: new Set(d.weakens) }));
+    .filter((d) => d.status === "accepted")
+    .map((d) => {
+      const before = byId.get(norm(d.id)) ?? byTitle.get(title(d));
+      const known = new Set(before?.status === "accepted" ? before.weakens : []);
+      return { decision: d, weakens: new Set(d.weakens.filter((w) => !known.has(w))) };
+    })
+    .filter(({ weakens }) => weakens.size > 0)
+    .sort((a, b) => compare(norm(a.decision.id), norm(b.decision.id)) || compare(a.decision.id, b.decision.id))
+    .map(({ decision, weakens }) => ({ id: decision.id, weakens }));
 }

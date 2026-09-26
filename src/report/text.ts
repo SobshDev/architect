@@ -77,9 +77,11 @@ export function formatText(report: Report, options: { verbose?: boolean } = {}):
   const isNew = (f: Finding) => f.status === "new";
   for (const f of report.findings.filter((f) => isNew(f) && f.level === "error")) blocks.push(findingBlock(f));
   for (const f of report.findings.filter((f) => isNew(f) && f.level === "warn")) blocks.push(findingBlock(f));
+  // A decision approved these in this change; they stay visible next to the weakenings.
+  for (const f of report.findings.filter((f) => f.approved_by !== undefined)) blocks.push(findingBlock(f, `approved by decision ${f.approved_by}`));
   if (options.verbose) {
     for (const f of report.findings.filter((f) => isNew(f) && f.level === "info")) blocks.push(findingBlock(f));
-    for (const f of report.findings.filter((f) => !isNew(f))) blocks.push(findingBlock(f, f.status));
+    for (const f of report.findings.filter((f) => !isNew(f) && f.approved_by === undefined)) blocks.push(findingBlock(f, f.status));
   }
   for (const w of sortWeakenings(report.weakenings)) blocks.push(weakeningBlock(w));
   if (report.api_changes.length > 0) blocks.push(apiChangeBlocks(report.api_changes));

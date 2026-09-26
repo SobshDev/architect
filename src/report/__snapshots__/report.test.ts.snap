@@ -102,13 +102,13 @@ exports[`golden outputs markdown 1`] = `
 
 | Rule | Location | Message | Because |
 |---|---|---|---|
-| acyclic |  | cycle: a -> b -> a | 0001 |
+| acyclic |  | cycle: a -&gt; b -&gt; a | 0001 |
 | no-ui-to-db | \`src/ui/page.ts:3\` | ui imports db | 0002, 0004 |
 
 #### Weakenings that need human approval
 
 - **layers** (level-lowered): layers lowered from error to warn
-  - ui -> db is now allowed
+  - ui -&gt; db is now allowed
 
 - **no-cycles** (rule-removed): no-cycles was removed (Approved by decision 0007)
 
@@ -288,35 +288,6 @@ exports[`golden outputs sarif 1`] = `
           "ruleId": "no-ui-to-db",
           "level": "error",
           "message": {
-            "text": "ui imports db"
-          },
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "src/ui/legacy.ts",
-                  "uriBaseId": "%SRCROOT%"
-                }
-              }
-            }
-          ],
-          "partialFingerprints": {
-            "architect/v1": "eeee"
-          },
-          "baselineState": "unchanged",
-          "properties": {
-            "because": [
-              "0002"
-            ],
-            "from": "ui",
-            "to": "db",
-            "kind": "forbid"
-          }
-        },
-        {
-          "ruleId": "no-ui-to-db",
-          "level": "error",
-          "message": {
             "text": "ui imports db Fix: Go through the service layer."
           },
           "locations": [
@@ -421,7 +392,7 @@ exports[`golden outputs sarif 1`] = `
             }
           ],
           "partialFingerprints": {
-            "architect/v1": "e2f2f5009d5ded42"
+            "architect/v1": "4bfb54acef881d41"
           },
           "baselineState": "new",
           "properties": {

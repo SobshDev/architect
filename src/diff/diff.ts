@@ -2,7 +2,7 @@ import { sortFindings, type ApiChange, type BaselineEntry, type Finding, type We
 import { applyBaseline, decisionFindings, evaluateRules } from "../rules/index.ts";
 import { apiStabilityFindings, diffApi } from "./api.ts";
 import { deprecatedFindings, structureFindings } from "./structure.ts";
-import { detectWeakenings } from "./weakening.ts";
+import { type Approval, approverOf, approvingDecisions, detectWeakenings } from "./weakening.ts";
 
 export interface DiffInput {
   base: WorkspaceState;
@@ -21,6 +21,8 @@ export interface DiffResult {
  * Compares two versions of a repository. Head findings covered by the head baseline are baselined; occurrences
  * that already existed at base beyond what the baseline covers are existing; the rest are new. Diff-only rules,
  * structural changes, new decision problems, and weakenings are added on top.
+ * An api-stability or deprecated finding whose rule an approving decision lists in weakens (see detectWeakenings)
+ * is waived and names that decision in approved_by.
  */
 export function diffStates({ base, head, today }: DiffInput): DiffResult {
   const evaluate = (state: WorkspaceState) => evaluateRules({ graph: state.graph, architecture: state.architecture, rules: state.rules, today });
@@ -39,13 +41,14 @@ export function diffStates({ base, head, today }: DiffInput): DiffResult {
   });
 
   const apiChanges = diffApi(base, head);
+  const approvals = approvingDecisions(base.decisions, head.decisions);
   const known = new Set(decisionFindings({ ...base, today }).map((finding) => finding.fingerprint));
   const decisions = decisionFindings({ ...head, today }).filter((finding) => !known.has(finding.fingerprint));
   return {
     findings: sortFindings([
       ...ruleFindings,
-      ...apiStabilityFindings(apiChanges, head),
-      ...deprecatedFindings(base, head),
+      ...approve(apiStabilityFindings(apiChanges, head), approvals),
+      ...approve(deprecatedFindings(base, head), approvals),
       ...structureFindings(base, head),
       ...decisions,
     ]),
@@ -53,4 +56,11 @@ export function diffStates({ base, head, today }: DiffInput): DiffResult {
     weakenings: detectWeakenings(base, head, { today }),
     apiChanges,
   };
+}
+
+function approve(findings: readonly Finding[], approvals: readonly Approval[]): Finding[] {
+  return findings.map((finding) => {
+    const approver = approverOf(approvals, finding.rule);
+    return approver ? { ...finding, status: "waived", approved_by: approver.id } : finding;
+  });
 }

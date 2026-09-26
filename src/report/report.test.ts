@@ -113,20 +113,44 @@ describe("text", () => {
   test("a clean report says so", () => {
     expect(formatText(createReport({ command: "hook", scope: "files", findings: [] }))).toBe("No new errors.\n");
   });
+
+  test("an approved finding shows its decision without verbose, and does not fail the run", () => {
+    const report = createReport({ command: "ci", scope: "all", findings: [finding({ rule: "stable", kind: "api-stability", status: "waived", approved_by: "0009" })] });
+    expect(report.exit_code).toBe(0);
+    expect(formatText(report)).toContain("error  stable  ui imports db  [approved by decision 0009]");
+    expect(formatText(report, { verbose: true }).match(/approved by decision 0009/g)).toHaveLength(1);
+  });
 });
 
 describe("sarif", () => {
-  test("only new and existing findings become results, each with a fingerprint", () => {
+  test("only new findings become results, each with a fingerprint", () => {
     const sarif = JSON.parse(formatSarif(representative()));
     const results: { ruleId: string; baselineState: string; partialFingerprints: Record<string, string> }[] = sarif.runs[0].results;
     const fingerprints = results.map((r) => r.partialFingerprints["architect/v1"]);
     expect(fingerprints.every((f) => typeof f === "string" && f.length > 0)).toBe(true);
-    expect(fingerprints).not.toContain("dddd");
-    expect(fingerprints).not.toContain("ffff");
-    expect(results.find((r) => r.partialFingerprints["architect/v1"] === "eeee")?.baselineState).toBe("unchanged");
+    for (const old of ["dddd", "eeee", "ffff"]) expect(fingerprints).not.toContain(old);
+    expect(results.every((r) => r.baselineState === "new")).toBe(true);
     expect(results.filter((r) => r.ruleId === "unapproved-weakening")).toHaveLength(1);
     const ruleIds = sarif.runs[0].tool.driver.rules.map((r: { id: string }) => r.id);
     expect(ruleIds).toEqual([...new Set(results.map((r) => r.ruleId))].sort());
+  });
+
+  test("weakening fingerprints survive message changes and stay distinct per rule and type", () => {
+    const fingerprints = (messages: string[]) => {
+      const weakenings: Weakening[] = messages.map((message) => ({ rule: "x", type: "waiver-added", message, details: [] }));
+      const report = createReport({ command: "ci", scope: "all", findings: [], weakenings });
+      return JSON.parse(formatSarif(report)).runs[0].results.map((r: { partialFingerprints: Record<string, string> }) => r.partialFingerprints["architect/v1"]);
+    };
+    expect(fingerprints(["Baseline grew: 2 entries."])).toEqual(fingerprints(["Baseline grew: 3 entries."]));
+    expect(new Set(fingerprints(["a", "b"])).size).toBe(2);
+  });
+
+  test("an approved finding is a suppressed note that names the decision", () => {
+    const report = createReport({ command: "ci", scope: "all", findings: [finding({ status: "waived", approved_by: "0009" })] });
+    const [result] = JSON.parse(formatSarif(report)).runs[0].results;
+    expect(result.level).toBe("note");
+    expect(result.message.text).toContain("Approved by decision 0009");
+    expect(result.suppressions[0].justification).toBe("Approved by decision 0009.");
   });
 
   test("baseline growth points at the baseline file", () => {
@@ -140,6 +164,25 @@ describe("markdown", () => {
   test("escapes pipes and newlines in table cells", () => {
     const md = formatMarkdown(createReport({ command: "ci", scope: "all", findings: [finding({ message: "a | b\nc" })] }));
     expect(md).toContain("| a \\| b c |");
+  });
+
+  test("repository text cannot become HTML, and code spans survive backticks", () => {
+    const message = "Before: tool<Args extends X>(a: A & B)";
+    const md = formatMarkdown(
+      createReport({
+        command: "ci",
+        scope: "all",
+        findings: [finding({ message }), finding({ rule: "stable", fingerprint: "b", status: "waived", approved_by: "0009", message })],
+        weakenings: [{ rule: "r", type: "semantic", message: "<script>", details: ["<b>x</b>"] }],
+        apiChanges: [{ component: "c", file: "f.ts", symbol: "a\u0060b", change: "added" }],
+      }),
+    );
+    expect(md).toContain("tool&lt;Args extends X&gt;(a: A &amp; B)");
+    expect(md).not.toContain("<Args");
+    expect(md).toContain("&lt;script&gt;");
+    expect(md).toContain("&lt;b&gt;x&lt;/b&gt;");
+    expect(md).toContain("(Approved by decision 0009)");
+    expect(md).toContain("\u0060\u0060a\u0060b\u0060\u0060");
   });
 
   test("caps the error table and says how many more", () => {

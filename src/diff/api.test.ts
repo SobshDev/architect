@@ -84,6 +84,30 @@ describe("diffApi", () => {
     const head = state({ "src/billing/index.ts": { exports: [{ name: "fresh" }] } });
     expect(diffApi(base, head).map((c) => `${c.symbol}:${c.change}`)).toEqual(["fresh:added", "old:removed"]);
   });
+
+  test("moving the entrypoint does not hide a change at the old one", () => {
+    const base = state({ "src/billing/index.ts": { exports: [{ name: "place", signature: "function place(a: number): void" }] }, "src/billing/order.ts": {} });
+    const moved = { exports: [{ name: "place", signature: "function place(a: string): void" }] };
+    const head = {
+      ...state({ "src/billing/index.ts": moved, "src/billing/order.ts": moved }),
+      architecture: ArchitectureSchema.parse({ components: [{ id: "billing", paths: ["src/billing"], entrypoints: ["src/billing/order.ts"] }] }),
+    };
+    expect(diffApi(base, head).map((c) => [c.file, c.change])).toEqual([
+      ["src/billing/index.ts", "changed"],
+      ["src/billing/order.ts", "added"],
+    ]);
+  });
+
+  test("a change seen through two entrypoints of one component is reported once, at the first file", () => {
+    const edge = { from: "src/billing/index.ts", to: "src/billing/tool.ts", specifier: "./tool.ts" };
+    const both = (signature: string) => ({
+      ...state({ "src/billing/index.ts": { stars: ["./tool.ts"] }, "src/billing/tool.ts": { exports: [{ name: "tool", signature }] } }, [edge]),
+      architecture: ArchitectureSchema.parse({ components: [{ id: "billing", paths: ["src/billing"], entrypoints: ["src/billing/index.ts", "src/billing/tool.ts"] }] }),
+    });
+    expect(diffApi(both("function tool(): void"), both("function tool<A extends B>(): void")).map((c) => [c.file, c.change])).toEqual([
+      ["src/billing/index.ts", "changed"],
+    ]);
+  });
 });
 
 describe("apiStabilityFindings", () => {

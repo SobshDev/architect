@@ -101,35 +101,74 @@ function normalize(signature: string): string {
 
 const CHANGE_ORDER = { removed: 0, changed: 1, added: 2 } as const;
 
-/** API changes at declared entrypoints, measured under head's component map for both versions. */
-export function diffApi(base: WorkspaceState, head: WorkspaceState): ApiChange[] {
-  const components = head.architecture.components;
-  const ids = components.map((c) => c.id);
-  const baseApi = publicApi(base.graph, new ComponentIndex(components, base.graph.workspaces), ids);
-  const headApi = publicApi(head.graph, new ComponentIndex(components, head.graph.workspaces), ids);
+function compareApis(baseApi: Map<string, ApiSymbol[]>, headApi: Map<string, ApiSymbol[]>, withGrowth: boolean): ApiChange[] {
   const key = (s: ApiSymbol) => `${s.file}\u0000${s.name}`;
   const changes: ApiChange[] = [];
-  for (const id of ids) {
-    const before = new Map((baseApi.get(id) ?? []).map((s) => [key(s), s]));
+  for (const [id, symbols] of baseApi) {
     const after = new Map((headApi.get(id) ?? []).map((s) => [key(s), s]));
-    for (const [k, old] of before) {
-      const now = after.get(k);
+    for (const old of symbols) {
+      const now = after.get(key(old));
       if (!now) changes.push({ component: id, file: old.file, symbol: old.name, change: "removed", before: old.signature });
       else if (normalize(old.signature) !== normalize(now.signature)) {
         changes.push({ component: id, file: old.file, symbol: old.name, change: "changed", before: old.signature, after: now.signature });
       }
     }
-    for (const [k, now] of after) {
-      if (!before.has(k)) changes.push({ component: id, file: now.file, symbol: now.name, change: "added", after: now.signature });
+  }
+  if (!withGrowth) return changes;
+  for (const [id, symbols] of headApi) {
+    const before = new Set((baseApi.get(id) ?? []).map(key));
+    for (const now of symbols) {
+      if (!before.has(key(now))) changes.push({ component: id, file: now.file, symbol: now.name, change: "added", after: now.signature });
     }
   }
-  return changes.sort(
+  return changes;
+}
+
+/**
+ * API changes at declared entrypoints, measured under head's component map for both versions. Entrypoints that
+ * base declared and head no longer does are also compared under base's map, so dropping an entrypoint cannot hide
+ * a removal or a signature change. A change seen through several entrypoints of a component (one re-exporting
+ * another) is reported once, at the first file in code-point order.
+ */
+export function diffApi(base: WorkspaceState, head: WorkspaceState): ApiChange[] {
+  const headComponents = head.architecture.components;
+  const headIds = headComponents.map((c) => c.id);
+  const headMap = new ComponentIndex(headComponents, head.graph.workspaces);
+  const changes = compareApis(
+    publicApi(base.graph, new ComponentIndex(headComponents, base.graph.workspaces), headIds),
+    publicApi(head.graph, headMap, headIds),
+    true,
+  );
+
+  const baseComponents = base.architecture.components;
+  const baseIds = baseComponents.map((c) => c.id);
+  const stillEntry = (file: string) => {
+    const id = headMap.of(file);
+    return id !== null && headMap.isEntrypoint(id, file);
+  };
+  const dropped = new Map<string, ApiSymbol[]>();
+  for (const [id, symbols] of publicApi(base.graph, new ComponentIndex(baseComponents, base.graph.workspaces), baseIds)) {
+    const lost = symbols.filter((s) => !stillEntry(s.file));
+    if (lost.length > 0) dropped.set(id, lost);
+  }
+  if (dropped.size > 0) {
+    changes.push(...compareApis(dropped, publicApi(head.graph, new ComponentIndex(baseComponents, head.graph.workspaces), [...dropped.keys()]), false));
+  }
+
+  changes.sort(
     (a, b) =>
       compareText(a.component, b.component) ||
       compareText(a.file, b.file) ||
       compareText(a.symbol, b.symbol) ||
       CHANGE_ORDER[a.change] - CHANGE_ORDER[b.change],
   );
+  const seen = new Set<string>();
+  return changes.filter((c) => {
+    const key = JSON.stringify([c.component, c.symbol, c.change, c.before ?? null, c.after ?? null]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function describeChange(change: ApiChange): string {

@@ -166,10 +166,38 @@ describe("waivers", () => {
   test("a new waiver and an extended expiry both count; an unchanged one does not", () => {
     expect(diff({ rules: [forbid] }, { rules: [forbid], waivers: [waiver] }).map((w) => w.type)).toEqual(["waiver-added"]);
     const extended = { ...waiver, expires: "2027-01-01" };
-    expect(diff({ rules: [forbid], waivers: [waiver] }, { rules: [forbid], waivers: [extended] }).map((w) => w.type)).toEqual([
-      "waiver-added",
-    ]);
+    const [w] = diff({ rules: [forbid], waivers: [waiver] }, { rules: [forbid], waivers: [extended] });
+    expect(w?.type).toBe("waiver-added");
+    expect(w?.message).toContain("extended");
     expect(diff({ rules: [forbid], waivers: [waiver] }, { rules: [forbid], waivers: [waiver] })).toEqual([]);
+  });
+
+  test("rewording the reason, citing a decision, or shortening the expiry is not a new waiver", () => {
+    const edited = { ...waiver, reason: "migration to the new client", decision: "0004", expires: "2026-11-01" };
+    expect(diff({ rules: [forbid], waivers: [waiver] }, { rules: [forbid], waivers: [edited] })).toEqual([]);
+  });
+});
+
+describe("component changes", () => {
+  const deprecatedRule = { id: "no-legacy", kind: "deprecated", level: "warn" };
+  const marked = components.map((c) => (c.id === "infra" ? { ...c, deprecated: true } : c));
+
+  test("a component that loses its deprecated mark loosens a deprecated rule that relies on the mark", () => {
+    expect(diff({ rules: [deprecatedRule], components: marked }, { rules: [deprecatedRule] }).map((w) => [w.rule, w.type])).toEqual([
+      ["no-legacy", "component-changed"],
+    ]);
+    const bySelector = { ...deprecatedRule, components: ["infra"] };
+    expect(diff({ rules: [bySelector], components: marked }, { rules: [bySelector] })).toEqual([]);
+  });
+
+  test("a component that stops declaring an entrypoint loosens an api-stability rule; adding one does not", () => {
+    const stable = { id: "stable", kind: "api-stability", level: "warn", components: ["domain"] };
+    const g = graph([["src/domain/index.ts", "src/domain/order.ts"]]);
+    const withEntry = (entrypoints: string[]) => components.map((c) => (c.id === "domain" ? { ...c, entrypoints } : c));
+    const [w] = diff({ graph: g, rules: [stable], components: withEntry(["src/domain/index.ts"]) }, { rules: [stable], components: withEntry(["src/domain/order.ts"]) });
+    expect([w?.rule, w?.type, w?.details]).toEqual(["stable", "component-changed", ["src/domain/index.ts"]]);
+    const wider = withEntry(["src/domain/index.ts", "src/domain/order.ts"]);
+    expect(diff({ graph: g, rules: [stable], components: withEntry(["src/domain/index.ts"]) }, { rules: [stable], components: wider })).toEqual([]);
   });
 });
 
@@ -233,5 +261,19 @@ describe("approval", () => {
 
   test("an old decision approves once its weakens list changes, matching ids after normalization", () => {
     expect(removed([decision("ADR-4", [])], [decision("0004", ["no-infra"])])).toBe("0004");
+  });
+
+  test("renumbering an old decision does not re-arm it", () => {
+    const titled = (id: string) => ({ ...decision(id, ["no-infra"]), title: "Drop the infra rule" });
+    expect(removed([titled("0003")], [titled("0009")])).toBeUndefined();
+  });
+
+  test("only weakens ids new to a decision approve", () => {
+    expect(removed([decision("0003", ["no-infra"])], [decision("0003", ["no-infra", "other"])])).toBeUndefined();
+    expect(removed([decision("0003", ["other"])], [decision("0003", ["other", "no-infra"])])).toBe("0003");
+  });
+
+  test("a decision accepted in this change approves everything it lists", () => {
+    expect(removed([decision("0003", ["no-infra"], "proposed")], [decision("0003", ["no-infra"])])).toBe("0003");
   });
 });
