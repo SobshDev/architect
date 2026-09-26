@@ -7,5 +7,7 @@ export * from "./components.ts";
 export * from "./selectors.ts";
 export * from "./findings.ts";
 export * from "./markdown.ts";
+export * from "./search.ts";
+export * from "./source.ts";
 export * from "./workspace.ts";
 export * from "./version.ts";
