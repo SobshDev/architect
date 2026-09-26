@@ -1,0 +1,15 @@
+{
+  "session_id": "session-0001",
+  "turn_id": "turn-0001",
+  "transcript_path": "/home/user/.codex/sessions/rollout-session-0001.jsonl",
+  "cwd": "/home/user/project",
+  "hook_event_name": "PostToolUse",
+  "model": "example-model",
+  "permission_mode": "default",
+  "tool_name": "apply_patch",
+  "tool_input": {
+    "command": "*** Begin Patch\n*** Add File: hello.txt\n+hi\n*** End Patch\n"
+  },
+  "tool_response": "Exit code: 0\nWall time: 0.1 seconds\nOutput:\nSuccess. Updated the following files:\nA hello.txt\n",
+  "tool_use_id": "tool-use-0001"
+}

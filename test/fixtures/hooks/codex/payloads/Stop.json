@@ -1,0 +1,11 @@
+{
+  "session_id": "session-0001",
+  "turn_id": "turn-0001",
+  "transcript_path": "/home/user/.codex/sessions/rollout-session-0001.jsonl",
+  "cwd": "/home/user/project",
+  "hook_event_name": "Stop",
+  "model": "example-model",
+  "permission_mode": "default",
+  "stop_hook_active": false,
+  "last_assistant_message": "done"
+}

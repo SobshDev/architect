@@ -1,0 +1,40 @@
+{
+  "session_id": "session-0001",
+  "transcript_path": "/home/user/.claude/projects/-home-user-project/session-0001.jsonl",
+  "cwd": "/home/user/project",
+  "prompt_id": "prompt-0001",
+  "permission_mode": "acceptEdits",
+  "effort": {
+    "level": "low"
+  },
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Edit",
+  "tool_input": {
+    "file_path": "/home/user/project/hello.txt",
+    "old_string": "hi",
+    "new_string": "hello",
+    "replace_all": false
+  },
+  "tool_response": {
+    "filePath": "/home/user/project/hello.txt",
+    "oldString": "hi",
+    "newString": "hello",
+    "originalFile": "hi\n",
+    "structuredPatch": [
+      {
+        "oldStart": 1,
+        "oldLines": 1,
+        "newStart": 1,
+        "newLines": 1,
+        "lines": [
+          "-hi",
+          "+hello"
+        ]
+      }
+    ],
+    "userModified": false,
+    "replaceAll": false
+  },
+  "tool_use_id": "tool-use-0002",
+  "duration_ms": 2
+}

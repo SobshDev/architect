@@ -1,0 +1,7 @@
+{
+  "session_id": "session-0001",
+  "transcript_path": "/home/user/.claude/projects/-home-user-project/session-0001.jsonl",
+  "cwd": "/home/user/project",
+  "hook_event_name": "SessionStart",
+  "source": "startup"
+}
