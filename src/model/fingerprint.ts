@@ -19,3 +19,9 @@ export function cycleFingerprint(rule: string, members: readonly string[]): stri
 export function keyFingerprint(rule: string, ...key: string[]): string {
   return fingerprint(["key", rule, ...key]);
 }
+
+/** Git blob id of the text (sha1 of "blob <byte length>\0<bytes>"), so worktree files and git objects share cache keys. */
+export function contentId(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  return createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
+}

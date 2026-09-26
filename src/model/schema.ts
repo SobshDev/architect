@@ -301,6 +301,8 @@ export const BaselineEntrySchema = z.strictObject({
   fingerprint: z.string().min(1),
   rule: z.string().min(1),
   count: z.number().int().positive(),
+  /** Source file of an edge finding. Cycle and other keyed findings omit it. */
+  file: z.string().optional(),
   from: z.string().optional(),
   to: z.string().optional(),
   message: z.string().optional(),

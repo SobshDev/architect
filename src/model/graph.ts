@@ -1,4 +1,6 @@
 // The dependency graph and the facts analyzers extract per file. Plain data, safe to cache as JSON.
+import type { Settings } from "./schema.ts";
+import type { FileSource } from "./source.ts";
 
 export type Language = "typescript" | "javascript" | "python";
 export type AnalyzerId = "typescript" | "python";
@@ -80,6 +82,33 @@ export interface WorkspacePackage {
   name: string;
   /** Repo-relative directory without a trailing slash. */
   dir: string;
+}
+
+/** Where an import points, as found by a resolver. Unresolved relative or aliased imports set only unresolved. */
+export type EdgeTarget = Pick<Edge, "to" | "workspace" | "package" | "builtin" | "unresolved">;
+
+export interface ResolverInput {
+  source: FileSource;
+  /** Every file in the version being analyzed (not only the analyzed ones), sorted. */
+  files: readonly string[];
+  workspaces: readonly WorkspacePackage[];
+  settings: Settings;
+}
+
+export interface ImportResolver {
+  /** Targets of one import. TypeScript returns exactly one; Python may return one per imported submodule. */
+  resolve(from: string, raw: RawImport): EdgeTarget[];
+}
+
+/** One language: fact extraction per file and import resolution across files. */
+export interface LanguageAnalyzer {
+  readonly id: AnalyzerId;
+  /** Bump when extraction or resolution changes, so cached facts are recomputed. */
+  readonly version: string;
+  /** Lowercase file extensions with the dot, such as ".ts". */
+  readonly extensions: readonly string[];
+  analyze(path: string, text: string, contentId: string): FileFacts;
+  createResolver(input: ResolverInput): Promise<ImportResolver>;
 }
 
 export interface Graph {
