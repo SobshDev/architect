@@ -1,4 +1,4 @@
-import { exitCodeFor, sortFindings, summarize, VERSION } from "../model/index.ts";
+import { compareText, exitCodeFor, sortFindings, summarize, VERSION } from "../model/index.ts";
 import type { ApiChange, BaselineEntry, ConfigIssue, Coverage, Finding, Report, Weakening } from "../model/index.ts";
 
 export interface ReportInput {
@@ -14,10 +14,7 @@ export interface ReportInput {
   coverage?: Coverage;
 }
 
-/** Locale-independent string order, so output is identical on every machine. */
-export function compareText(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
-}
+export { compareText };
 
 function byKeys<T>(...keys: ((item: T) => string | number)[]): (a: T, b: T) => number {
   return (a, b) => {

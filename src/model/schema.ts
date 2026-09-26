@@ -384,6 +384,8 @@ export const FindingSchema = z.object({
   heuristic: z.boolean().optional(),
   /** Supporting locations, such as the edges that form a cycle. */
   related: z.array(LocationSchema).optional(),
+  /** Diff mode: the accepted decision that approves this api-stability or deprecated finding (status waived). */
+  approved_by: z.string().optional(),
 });
 
 export const WeakeningTypeSchema = z.enum([
@@ -394,6 +396,8 @@ export const WeakeningTypeSchema = z.enum([
   "type-imports-excluded",
   "waiver-added",
   "baseline-grown",
+  /** A component lost deprecated, or an entrypoint that an api-stability rule checks. */
+  "component-changed",
   "semantic",
 ]);
 

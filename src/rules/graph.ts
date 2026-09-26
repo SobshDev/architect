@@ -1,4 +1,5 @@
 import type { ComponentEdge, ComponentGraph, ComponentIndex, Edge, EdgeKind, Graph } from "../model/index.ts";
+import { compareText } from "../model/index.ts";
 
 /** Component of an edge's internal target: the file's component, or the workspace package's component. */
 export function targetComponent(edge: Edge, index: ComponentIndex): string | null {
@@ -33,11 +34,11 @@ export function componentGraph(graph: Graph, index: ComponentIndex, options: { i
       count: p.edges.length,
       kinds: [...p.kinds].sort(),
       samples: [...p.edges]
-        .sort((a, b) => a.from.localeCompare(b.from) || a.line - b.line)
+        .sort((a, b) => compareText(a.from, b.from) || a.line - b.line)
         .slice(0, 3)
         .map((e) => ({ file: e.from, line: e.line, target: e.to ?? e.workspace ?? "" })),
     }))
-    .sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to));
+    .sort((a, b) => compareText(a.from, b.from) || compareText(a.to, b.to));
   return { components: index.ids(), edges };
 }
 
@@ -99,7 +100,7 @@ export function findCycles(nodes: readonly string[], edges: readonly { from: str
       }
     }
   }
-  return result.sort((a, b) => a.join("\u0000").localeCompare(b.join("\u0000")));
+  return result.sort((a, b) => compareText(a.join("\u0000"), b.join("\u0000")));
 }
 
 /** Shortest cycle through start inside the member set, as a closed path [start, ..., start]. */

@@ -1,3 +1,4 @@
+import { compareText } from "./order.ts";
 // Small BM25 ranking used for knowledge cards and decision retrieval. Deterministic: ties break by id.
 
 const STOPWORDS = new Set(
@@ -60,7 +61,7 @@ export class Bm25Index {
       }
       if (score > 0) hits.push({ id: doc.id, score });
     }
-    hits.sort((x, y) => y.score - x.score || x.id.localeCompare(y.id));
+    hits.sort((x, y) => y.score - x.score || compareText(x.id, y.id));
     return hits.slice(0, limit);
   }
 }

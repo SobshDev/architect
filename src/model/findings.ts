@@ -1,4 +1,5 @@
 import type { ConfigIssue, Finding, FindingLevel, ReportSummary, Weakening } from "./schema.ts";
+import { compareText } from "./order.ts";
 
 const LEVEL_ORDER: Record<FindingLevel, number> = { error: 0, warn: 1, info: 2 };
 
@@ -6,11 +7,11 @@ const LEVEL_ORDER: Record<FindingLevel, number> = { error: 0, warn: 1, info: 2 }
 export function compareFindings(a: Finding, b: Finding): number {
   return (
     LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level] ||
-    a.rule.localeCompare(b.rule) ||
-    (a.location?.file ?? "").localeCompare(b.location?.file ?? "") ||
+    compareText(a.rule, b.rule) ||
+    compareText(a.location?.file ?? "", b.location?.file ?? "") ||
     (a.location?.line ?? 0) - (b.location?.line ?? 0) ||
-    a.message.localeCompare(b.message) ||
-    a.fingerprint.localeCompare(b.fingerprint)
+    compareText(a.message, b.message) ||
+    compareText(a.fingerprint, b.fingerprint)
   );
 }
 

@@ -2,6 +2,7 @@
 import { basename } from "node:path";
 import { globMatcher, type Component, type ComponentGraph, type WorkspacePackage } from "../model/index.ts";
 import { findCycles } from "../rules/index.ts";
+import { compareText } from "../model/index.ts";
 
 /** Test and fixture code that the first map leaves out. */
 const TEST_GLOBS = ["**/*.test.*", "**/*.spec.*", "**/__tests__/**", "**/__mocks__/**", "**/test/**", "**/tests/**", "**/e2e/**", "**/fixtures/**"];
@@ -25,7 +26,7 @@ export function inferComponents(files: readonly string[], workspaces: readonly W
   const add = (name: string, paths: string[], extra: Partial<Component> = {}) => components.push({ id: uniqueId(name, taken), paths, ...extra });
 
   // Innermost package first, so nested packages win the first-match rule.
-  const packages = workspaces.filter((w) => w.dir !== "").sort((a, b) => b.dir.length - a.dir.length || a.dir.localeCompare(b.dir));
+  const packages = workspaces.filter((w) => w.dir !== "").sort((a, b) => b.dir.length - a.dir.length || compareText(a.dir, b.dir));
   const packageOf = (file: string) => packages.find((w) => file.startsWith(`${w.dir}/`));
   const used = new Set<string>();
   const loose: string[] = [];
@@ -67,7 +68,7 @@ export function inferComponents(files: readonly string[], workspaces: readonly W
 function compareNested(a: string, b: string): number {
   if (a.startsWith(`${b}/`)) return -1;
   if (b.startsWith(`${a}/`)) return 1;
-  return a.localeCompare(b);
+  return compareText(a, b);
 }
 
 /** Descends while one folder holds at least 80% of the files and has two or more subfolders with code. */
@@ -82,7 +83,7 @@ function sourceRoot(files: readonly string[]): string {
       const slash = rest.indexOf("/");
       if (slash > 0) counts.set(rest.slice(0, slash), (counts.get(rest.slice(0, slash)) ?? 0) + 1);
     }
-    const top = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
+    const top = [...counts].sort((a, b) => b[1] - a[1] || compareText(a[0], b[0]))[0];
     if (top === undefined || top[1] < 0.8 * inside.length) break;
     const childPrefix = `${prefix}${top[0]}/`;
     const subfolders = new Set<string>();

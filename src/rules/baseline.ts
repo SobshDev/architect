@@ -1,15 +1,16 @@
 import type { Baseline, BaselineEntry, Finding } from "../model/index.ts";
+import { compareText } from "../model/index.ts";
 
 function isCandidate(f: Finding): boolean {
   return f.level !== "info";
 }
 
 function byFileLine(a: Finding, b: Finding): number {
-  return (a.location?.file ?? "").localeCompare(b.location?.file ?? "") || (a.location?.line ?? 0) - (b.location?.line ?? 0);
+  return compareText((a.location?.file ?? ""), b.location?.file ?? "") || (a.location?.line ?? 0) - (b.location?.line ?? 0);
 }
 
 function sortEntries(entries: BaselineEntry[]): BaselineEntry[] {
-  return entries.sort((a, b) => a.rule.localeCompare(b.rule) || (a.file ?? "").localeCompare(b.file ?? "") || a.fingerprint.localeCompare(b.fingerprint));
+  return entries.sort((a, b) => compareText(a.rule, b.rule) || compareText((a.file ?? ""), b.file ?? "") || compareText(a.fingerprint, b.fingerprint));
 }
 
 /** Marks up to count new findings per baseline fingerprint as baselined; reports entries that no longer occur as fixed. */

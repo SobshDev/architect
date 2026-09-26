@@ -13,6 +13,7 @@ import {
 import { applyBaseline, componentGraph, computeMetrics, evaluateRules } from "../rules/index.ts";
 import { UsageError } from "./errors.ts";
 import { analyze, openWorkspace, requireValidContract, type Workspace } from "./workspace.ts";
+import { compareText } from "../model/index.ts";
 
 export type ExplainKind = "rule" | "decision" | "component" | "card";
 
@@ -222,8 +223,8 @@ async function explainComponent(ws: Workspace, id: string): Promise<Explanation>
   const index = new ComponentIndex(architecture.components, graph.workspaces);
   const components = componentGraph(graph, index);
   const metrics = computeMetrics(graph, index).components.find((entry) => entry.id === id);
-  const dependsOn = components.edges.filter((edge) => edge.from === id).sort((a, b) => b.count - a.count || a.to.localeCompare(b.to));
-  const usedBy = components.edges.filter((edge) => edge.to === id).sort((a, b) => b.count - a.count || a.from.localeCompare(b.from));
+  const dependsOn = components.edges.filter((edge) => edge.from === id).sort((a, b) => b.count - a.count || compareText(a.to, b.to));
+  const usedBy = components.edges.filter((edge) => edge.to === id).sort((a, b) => b.count - a.count || compareText(a.from, b.from));
   const mentioning = rules.rules.filter((rule) => ruleSelectors(rule).some((selector) => selector === id || selector === "*"));
   const governing = decisions.filter(
     (decision) => decision.governs.includes(id) || component.paths.some((path) => globMatcher(decision.governs.filter((g) => g.includes("/") || g.includes("*")))(path)),

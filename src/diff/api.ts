@@ -11,6 +11,7 @@ import {
   sortFindings,
   type WorkspaceState,
 } from "../model/index.ts";
+import { compareText } from "../model/index.ts";
 
 export interface ApiSymbol {
   component: string;
@@ -83,7 +84,7 @@ export function publicApi(graph: Graph, index: ComponentIndex, componentIds?: re
         symbols.push({ component: id, file: facts.path, name, kind: sym.kind, signature: sym.signature });
       }
     }
-    symbols.sort((a, b) => a.file.localeCompare(b.file) || a.name.localeCompare(b.name));
+    symbols.sort((a, b) => compareText(a.file, b.file) || compareText(a.name, b.name));
     api.set(id, symbols);
   }
   return api;
@@ -124,9 +125,9 @@ export function diffApi(base: WorkspaceState, head: WorkspaceState): ApiChange[]
   }
   return changes.sort(
     (a, b) =>
-      a.component.localeCompare(b.component) ||
-      a.file.localeCompare(b.file) ||
-      a.symbol.localeCompare(b.symbol) ||
+      compareText(a.component, b.component) ||
+      compareText(a.file, b.file) ||
+      compareText(a.symbol, b.symbol) ||
       CHANGE_ORDER[a.change] - CHANGE_ORDER[b.change],
   );
 }
