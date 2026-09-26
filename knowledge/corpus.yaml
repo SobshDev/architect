@@ -1,0 +1,92 @@
+# Reference corpus used while writing knowledge cards.
+# `bun run corpus:fetch` clones each repo into data/repos/<dir> at the pinned commit.
+# `relation` is the strongest relation a card may claim to the source:
+#   adapted  - the license (MIT, CC0) allows adapting text into MIT cards
+#   cc-by    - adaptations must live in packs/cc-by with attribution
+#   see-also - link only; cards contain no text derived from the source
+version: 1
+repos:
+  - dir: donnemartin__system-design-primer
+    url: https://github.com/donnemartin/system-design-primer
+    sha: ae9bbd7b02d90b9866215de185217d33f39ab733
+    license: CC-BY-4.0
+    relation: cc-by
+    use: Adapt text only, in packs/cc-by. Skip the figures credited to third parties.
+  - dir: iluwatar__java-design-patterns
+    url: https://github.com/iluwatar/java-design-patterns
+    sha: 4cabb204f240240bea319605a5ffa46ded728001
+    license: MIT
+    relation: adapted
+    use: Pattern write-ups. Keep the MIT notice; skip passages quoted from Wikipedia (CC BY-SA).
+  - dir: mehdihadeli__awesome-software-architecture
+    url: https://github.com/mehdihadeli/awesome-software-architecture
+    sha: 686546eb1bb1167229d409b9e9eb996a882aeadc
+    license: CC0-1.0
+    relation: adapted
+    use: Reading index with a full docs tree.
+  - dir: kbtale__awesome-architecture-patterns
+    url: https://github.com/kbtale/awesome-architecture-patterns
+    sha: 7d5bed467a0ef0d9f4810edad1dc89f4f31b90d2
+    license: CC0-1.0
+    relation: adapted
+    use: Link list of architecture patterns.
+  - dir: madd86__awesome-system-design
+    url: https://github.com/madd86/awesome-system-design
+    sha: 52834671253b9c3a68c52f66fdf2d939990213be
+    license: CC0-1.0
+    relation: adapted
+    use: Link list of system design resources.
+  - dir: DovAmir__awesome-design-patterns
+    url: https://github.com/DovAmir/awesome-design-patterns
+    sha: 9006287f27e720000cc8763ae4cd150789b8571d
+    license: CC0-1.0
+    relation: adapted
+    use: Link list. The CC0 dedication is a README badge; the repo has no LICENSE file.
+  - dir: binhnguyennus__awesome-scalability
+    url: https://github.com/binhnguyennus/awesome-scalability
+    sha: c9ca9f248d4dbbde63a8460188f6324f00f34ddd
+    license: MIT
+    relation: adapted
+    use: Reading list of scalability articles; cite the linked articles, not the list.
+  - dir: ThreeDotsLabs__wild-workouts-go-ddd-example
+    url: https://github.com/ThreeDotsLabs/wild-workouts-go-ddd-example
+    sha: 8ecfcdf05b1462c4757bd2dcac9086c78e9f7791
+    license: MIT
+    relation: adapted
+    use: Reference domain-driven Go app; future Go analyzer fixture.
+  - dir: ddd-crew__bounded-context-canvas
+    url: https://github.com/ddd-crew/bounded-context-canvas
+    sha: 468f1f95974cc5bd8e04a769574acf5e4bba5839
+    license: CC-BY-SA-4.0
+    relation: see-also
+    use: Link only.
+  - dir: ddd-crew__ddd-starter-modelling-process
+    url: https://github.com/ddd-crew/ddd-starter-modelling-process
+    sha: 1eff6def298d4212ceaf297e00970b0505347b5a
+    license: CC-BY-SA-4.0
+    relation: see-also
+    use: Link only.
+  - dir: ddd-crew__welcome-to-ddd
+    url: https://github.com/ddd-crew/welcome-to-ddd
+    sha: 4fd0ae233a5ee55c275638ab32aeb4f074db0b45
+    license: CC-BY-SA-4.0
+    relation: see-also
+    use: Link only.
+  - dir: brandonhimpfen__awesome-software-architecture
+    url: https://github.com/brandonhimpfen/awesome-software-architecture
+    sha: 301f34fe5e10f8c30168946a56ae15e421d138d9
+    license: CC-BY-SA-4.0
+    relation: see-also
+    use: Link only. The badge alt text says CC0 but the badge image and link are CC BY-SA 4.0.
+  - dir: fabianmagrini__awesome-architecture
+    url: https://github.com/fabianmagrini/awesome-architecture
+    sha: 4d04ae39e878fa01d5b4c9d2ae5ceac2b413356c
+    license: none
+    relation: see-also
+    use: Link only; no license found.
+  - dir: theanalyst__awesome-distributed-systems
+    url: https://github.com/theanalyst/awesome-distributed-systems
+    sha: c60f86401a9e77ca0e18c9bddba3c75eb3e2fad1
+    license: none
+    relation: see-also
+    use: Link only; no license found.

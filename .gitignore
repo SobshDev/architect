@@ -1,0 +1,7 @@
+node_modules/
+dist/
+data/
+.architect/cache/
+eval/runs/
+*.log
+.DS_Store

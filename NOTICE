@@ -1,0 +1,23 @@
+Architect
+Copyright (c) 2026 Gabriel Brument. Licensed under the MIT License (see LICENSE).
+
+This product includes or bundles third-party software:
+
+- tree-sitter-python grammar (src/analysis/python/grammar/tree-sitter-python.wasm)
+  Copyright (c) 2016 Max Brunsfeld. MIT License.
+  https://github.com/tree-sitter/tree-sitter-python
+- web-tree-sitter. Copyright (c) 2018-2024 Max Brunsfeld. MIT License.
+  https://github.com/tree-sitter/tree-sitter
+- TypeScript 6.0.3. Copyright (c) Microsoft Corporation. Apache License 2.0.
+  Bundled in the compiled binaries. https://github.com/microsoft/TypeScript
+- MCP TypeScript SDK (@modelcontextprotocol/server). MIT License.
+  https://github.com/modelcontextprotocol/typescript-sdk
+- zod. Copyright (c) 2025 Colin McDonnell. MIT License. https://github.com/colinhacks/zod
+- yaml. Copyright Eemeli Aro. ISC License. https://github.com/eemeli/yaml
+- picomatch. Copyright (c) 2017-present Jon Schlinkert. MIT License.
+  https://github.com/micromatch/picomatch
+
+Knowledge cards in knowledge/cards are original text under the MIT License. Cards
+that adapt MIT or CC0 sources name those sources in their front matter. Material
+adapted from CC BY 4.0 sources lives in packs/cc-by under its own LICENSE and NOTICE
+and is not relicensed.

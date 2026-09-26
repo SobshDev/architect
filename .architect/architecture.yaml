@@ -1,0 +1,73 @@
+# Architect's own architecture. `bun run check` runs Architect against this map.
+version: 1
+name: architect
+description: Design memory and structural checks for coding agents.
+components:
+  - id: model
+    description: Zod schemas, types, and pure helpers shared by every module.
+    paths: [src/model]
+    kind: core
+    entrypoints: [src/model/index.ts]
+  - id: store
+    description: Reads and writes the .architect directory.
+    paths: [src/store]
+    kind: adapter
+    entrypoints: [src/store/index.ts]
+  - id: analysis
+    description: File sources, language analyzers, the graph builder, history, and state writes.
+    paths: [src/analysis]
+    kind: adapter
+    entrypoints: [src/analysis/index.ts]
+  - id: rules
+    description: Rule evaluation, waivers, baseline matching, and metrics.
+    paths: [src/rules]
+    kind: core
+    entrypoints: [src/rules/index.ts]
+  - id: knowledge
+    description: Knowledge card loading, search, and license lint.
+    paths: [src/knowledge]
+    kind: core
+    entrypoints: [src/knowledge/index.ts]
+  - id: report
+    description: Text, JSON, Markdown, SARIF, and graph formatters.
+    paths: [src/report]
+    kind: core
+    entrypoints: [src/report/index.ts]
+  - id: diff
+    description: Base and head comparison, weakening detection, API changes.
+    paths: [src/diff]
+    kind: core
+    entrypoints: [src/diff/index.ts]
+  - id: context
+    description: Task briefs for agents.
+    paths: [src/context]
+    kind: core
+    entrypoints: [src/context/index.ts]
+  - id: integrations
+    description: Hook adapters, instruction files, install and sync plans.
+    paths: [src/integrations]
+    kind: adapter
+    entrypoints: [src/integrations/index.ts]
+  - id: engine
+    description: Workspace loading and the command flows shared by the CLI and the MCP server.
+    paths: [src/engine]
+    kind: application
+    entrypoints: [src/engine/index.ts]
+  - id: cli
+    description: Command-line entry point.
+    paths: [src/cli]
+    kind: entry
+  - id: mcp
+    description: MCP server entry point.
+    paths: [src/mcp]
+    kind: entry
+  - id: scripts
+    description: Repository tooling.
+    paths: [scripts]
+    kind: tooling
+settings:
+  exclude:
+    - "test/**"
+    - "**/*.test.ts"
+    - "eval/**"
+    - "data/**"

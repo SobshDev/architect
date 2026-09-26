@@ -1,0 +1,70 @@
+version: 1
+rules:
+  - id: layering
+    kind: layers
+    description: Entry points wire the engine, the engine runs flows, feature modules build on base modules, and everything builds on the model.
+    layers:
+      - [cli, mcp]
+      - engine
+      - [diff, context, integrations]
+      - [store, analysis, rules, knowledge, report]
+      - model
+    because: ["0002"]
+
+  - id: base-modules-independent
+    kind: independent
+    members: [store, analysis, rules, knowledge, report]
+    because: ["0002"]
+
+  - id: feature-modules-independent
+    kind: independent
+    members: [diff, context, integrations]
+    because: ["0002"]
+
+  - id: entry-points-independent
+    kind: independent
+    members: [cli, mcp]
+    because: ["0002"]
+
+  - id: no-cycles
+    kind: acyclic
+    because: ["0002"]
+
+  - id: public-surfaces
+    kind: entrypoints
+    description: Modules import each other only through index.ts.
+    targets: [model, store, analysis, rules, knowledge, report, diff, context, integrations, engine]
+    because: ["0002"]
+
+  - id: model-is-pure
+    kind: external-imports
+    from: [model]
+    allow: [zod, picomatch, "node:crypto", "node:path"]
+    allow_builtins: false
+    because: ["0002"]
+
+  - id: typescript-only-in-analysis
+    kind: external-imports
+    packages: [typescript]
+    allow_from: ["path:src/analysis/typescript/**"]
+    because: ["0004"]
+
+  - id: tree-sitter-only-in-analysis
+    kind: external-imports
+    packages: [web-tree-sitter]
+    allow_from: ["path:src/analysis/python/**"]
+    because: ["0004"]
+
+  - id: mcp-sdk-only-in-mcp
+    kind: external-imports
+    packages: ["@modelcontextprotocol/*"]
+    allow_from: [mcp]
+    because: ["0004"]
+
+  - id: no-model-calls
+    kind: external-imports
+    description: Architect is deterministic; the host agent does the reasoning.
+    packages: [openai, "@anthropic-ai/*", "@google/genai", "@google/generative-ai", ai, "@ai-sdk/*", ollama, cohere-ai, "@mistralai/*", groq-sdk]
+    allow_from: []
+    because: ["0003"]
+waivers: []
