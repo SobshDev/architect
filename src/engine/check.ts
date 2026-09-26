@@ -1,13 +1,13 @@
 import type { Report, Rule } from "../model/index.ts";
 import { createReport } from "../report/index.ts";
 import { applyBaseline, decisionFindings, evaluateRules, metricFindings } from "../rules/index.ts";
-import { analyze, changedSince, contractIssues, hasConfigErrors, openWorkspace, type Workspace } from "./workspace.ts";
+import { analyze, changedSince, contractIssues, hasConfigErrors, openWorkspace, repoPaths, type Workspace } from "./workspace.ts";
 
 export interface CheckOptions {
   /** all (default), or changed: files changed against HEAD, or against the merge base with base. */
   scope?: "all" | "changed";
   base?: string;
-  /** Explicit repo-relative files. Overrides scope. */
+  /** Explicit files, absolute or relative to cwd. Overrides scope. */
   files?: readonly string[];
   today?: string;
 }
@@ -19,9 +19,11 @@ export interface CheckOutcome {
 
 export async function runCheck(cwd: string, options: CheckOptions = {}): Promise<CheckOutcome> {
   const ws = await openWorkspace(cwd, { today: options.today });
-  return { report: await checkWorkspace(ws, options), rules: ws.contract.rules.rules };
+  const files = options.files === undefined ? undefined : repoPaths(ws, cwd, options.files);
+  return { report: await checkWorkspace(ws, { ...options, files }), rules: ws.contract.rules.rules };
 }
 
+/** options.files, when given, are repo paths. */
 export async function checkWorkspace(ws: Workspace, options: CheckOptions = {}): Promise<Report> {
   let scope: Report["scope"] = options.files !== undefined ? "files" : (options.scope ?? "all");
   const issues = contractIssues(ws);

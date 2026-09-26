@@ -9,6 +9,8 @@ import {
   jsonSchemas,
   runBaselineUpdate,
   runCheck,
+  runCi,
+  runDiff,
   runExplain,
   runGraph,
   runInit,
@@ -27,6 +29,11 @@ Commands:
   init [--new] [--force]            Map the current code into .architect/ (--new: empty files for a new design)
   check [--all | --changed] [--base <ref>] [files...]
                                     Check the code against the rules (default --all)
+  diff --base <ref> [--head <ref>]  Compare head (default: the working tree) with its merge base with <ref>:
+                                    new findings, weakened rules, API changes, fixed baseline entries
+  ci [--base <ref>] [--head <ref>] [--sarif <path>] [--summary <path>]
+                                    The diff as a CI gate: Markdown step summary and SARIF
+                                    (base defaults to origin/$GITHUB_BASE_REF)
   graph [--format mermaid|dot|json] [--no-types]
                                     Print the component graph
   explain <rule:|decision:|component:><id>
@@ -36,7 +43,7 @@ Commands:
   schema [name] [--out <dir>]       Print JSON Schemas (${SCHEMA_NAMES.join(", ")})
 
 Options:
-  --format <format>   text, json, markdown, or sarif for check; text or json for explain and status
+  --format <format>   text, json, markdown, or sarif for check and diff; text or json for explain and status
   --verbose           List baselined, waived, and informational findings too
   --cwd <dir>         Run as if started in <dir>
   -h, --help          Show this help
@@ -87,6 +94,36 @@ const commands: Record<string, (args: string[], cwd: string) => Promise<number>>
     const { report, rules } = await runCheck(cwd, { scope, base: values.base, files: positionals.length > 0 ? positionals : undefined });
     await out(formatReport(report, format, { verbose: values.verbose, rules }));
     return report.exit_code;
+  },
+
+  async diff(args, cwd) {
+    const { values, positionals } = parse(args, {
+      base: { type: "string" },
+      head: { type: "string" },
+      format: { type: "string" },
+      verbose: { type: "boolean" },
+    });
+    noPositionals(positionals, "architect diff --base <ref> [--head <ref>]");
+    if (values.base === undefined) throw new UsageError("Usage: architect diff --base <ref> [--head <ref>]");
+    const format = oneOf(values.format, ["text", "json", "markdown", "sarif"] as const, "text");
+    const { report, rules } = await runDiff(cwd, { base: values.base, head: values.head });
+    await out(formatReport(report, format, { verbose: values.verbose, rules }));
+    return report.exit_code;
+  },
+
+  async ci(args, cwd) {
+    const { values, positionals } = parse(args, {
+      base: { type: "string" },
+      head: { type: "string" },
+      sarif: { type: "string" },
+      summary: { type: "string" },
+      verbose: { type: "boolean" },
+    });
+    noPositionals(positionals, "architect ci [--base <ref>] [--head <ref>] [--sarif <path>] [--summary <path>]");
+    const outcome = await runCi(cwd, { base: values.base, head: values.head, sarif: values.sarif, summary: values.summary });
+    await out(formatReport(outcome.report, "text", { verbose: values.verbose, rules: outcome.rules }));
+    for (const path of outcome.written) process.stderr.write(`Wrote ${path}\n`);
+    return outcome.report.exit_code;
   },
 
   async graph(args, cwd) {

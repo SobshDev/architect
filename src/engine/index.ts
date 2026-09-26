@@ -19,3 +19,4 @@ export { explainTarget, runExplain, type Explanation, type ExplainKind } from ".
 export { formatBaselineUpdate, runBaselineUpdate, type BaselineUpdateResult } from "./baseline.ts";
 export { formatStatus, runStatus, type StatusResult } from "./status.ts";
 export { jsonSchemas, SCHEMA_NAMES, type SchemaName } from "./schema.ts";
+export { runCi, runDiff, type CiOptions, type CiOutcome, type DiffOptions, type DiffOutcome } from "./diff.ts";

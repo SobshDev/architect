@@ -44,6 +44,8 @@ export interface InitResult {
 }
 
 const ADR_DIR_CANDIDATES = ["docs/adr", "docs/adrs", "doc/adr", "docs/decisions", "docs/architecture/decisions", "adr", "architecture/decisions"];
+const RECORD_TITLE = "Record architecture decisions";
+const MAP_TITLE = "Initial architecture map";
 
 export async function runInit(cwd: string, options: InitOptions = {}): Promise<InitResult> {
   const root = await findRoot(cwd);
@@ -66,7 +68,7 @@ export async function runInit(cwd: string, options: InitOptions = {}): Promise<I
     await write(CONTRACT_PATHS.architecture, serializeArchitecture({ version: 1, name, components: [], ...(adrDirs.length > 0 ? { settings: { adr_dirs: adrDirs } } : {}) }));
     await write(CONTRACT_PATHS.rules, serializeRules({ version: 1, rules: [] }));
     await write(CONTRACT_PATHS.baseline, serializeBaseline(BaselineSchema.parse({})));
-    const decisions = await writeStarterDecisions(root, existing.decisions, today, [], [], write);
+    const decisions = await writeStarterDecisions(starterIds(existing.decisions), today, [], [], write);
     await write(`${CONTRACT_PATHS.dir}/.gitignore`, "cache/\n");
     return { root, written, components: [], layers: [], excluded: [], adrDirs, baselined: 0, decisions };
   }
@@ -84,8 +86,9 @@ export async function runInit(cwd: string, options: InitOptions = {}): Promise<I
 
   const { graph } = await buildGraph(source, architecture, { cacheDir: join(root, CONTRACT_PATHS.cache) });
   const layers = inferLayers(componentGraph(graph, new ComponentIndex(architecture.components, graph.workspaces)));
-  const ids = nextIds(existing.decisions, 2);
-  const [recordId, mapId] = [ids[0] ?? "0001", ids[1] ?? "0002"];
+  const ids = starterIds(existing.decisions);
+  // The rules cite the map decision, which exists only when components were found.
+  const cited = components.length > 0 ? ids.map.id : ids.record.id;
   const rulesInput = {
     version: 1 as const,
     rules: [
@@ -94,7 +97,7 @@ export async function runInit(cwd: string, options: InitOptions = {}): Promise<I
         kind: "acyclic" as const,
         level: "warn" as const,
         description: "Components must not depend on each other in a cycle.",
-        because: [mapId],
+        because: [cited],
       },
       ...(layers.length >= 2
         ? [
@@ -104,7 +107,7 @@ export async function runInit(cwd: string, options: InitOptions = {}): Promise<I
               level: "warn" as const,
               description: "The dependency direction observed when Architect was set up. Review it, then raise it to error with a decision.",
               layers: layers.map((layer) => (layer.length === 1 ? (layer[0] ?? "") : layer)),
-              because: [mapId],
+              because: [cited],
             },
           ]
         : []),
@@ -117,7 +120,7 @@ export async function runInit(cwd: string, options: InitOptions = {}): Promise<I
   await write(CONTRACT_PATHS.architecture, serializeArchitecture(architectureInput));
   await write(CONTRACT_PATHS.rules, serializeRules(rulesInput));
   await write(CONTRACT_PATHS.baseline, serializeBaseline(baseline));
-  const decisions = await writeStarterDecisions(root, existing.decisions, today, components, layers, write, [recordId, mapId]);
+  const decisions = await writeStarterDecisions(ids, today, components, layers, write);
   await write(`${CONTRACT_PATHS.dir}/.gitignore`, "cache/\n");
   return {
     root,
@@ -137,26 +140,39 @@ function nextIds(decisions: readonly Decision[], count: number): string[] {
   return Array.from({ length: count }, (_, i) => String(highest + i + 1).padStart(4, "0"));
 }
 
+interface StarterId {
+  id: string;
+  /** The existing native decision with this title, which init reuses instead of adding a duplicate. */
+  existing?: Decision;
+}
+
+/** Ids for the two starter decisions: existing ones are reused (so init --force never stacks duplicates), new ones take the next free ids. */
+function starterIds(decisions: readonly Decision[]): { record: StarterId; map: StarterId } {
+  const find = (title: string) => decisions.find((decision) => !decision.imported && decision.title.toLowerCase() === title.toLowerCase());
+  const fresh = nextIds(decisions, 2);
+  const take = () => fresh.shift() ?? "0001";
+  const record = find(RECORD_TITLE);
+  const map = find(MAP_TITLE);
+  const recordId: StarterId = record ? { id: record.id, existing: record } : { id: take() };
+  const mapId: StarterId = map ? { id: map.id, existing: map } : { id: take() };
+  return { record: recordId, map: mapId };
+}
+
 async function writeStarterDecisions(
-  root: string,
-  existing: readonly Decision[],
+  ids: { record: StarterId; map: StarterId },
   today: string,
   components: readonly Component[],
   layers: readonly string[][],
   write: (path: string, text: string) => Promise<void>,
-  ids: readonly string[] = nextIds(existing, 2),
 ): Promise<string[]> {
-  const already = (title: string) => existing.some((decision) => !decision.imported && decision.title.toLowerCase() === title.toLowerCase());
   const written: string[] = [];
-  const recordTitle = "Record architecture decisions";
-  const recordId = ids[0] ?? "0001";
-  if (!already(recordTitle)) {
-    const path = decisionPath(recordId, recordTitle);
+  if (ids.record.existing === undefined) {
+    const recordId = ids.record.id;
     await write(
-      path,
+      decisionPath(recordId, RECORD_TITLE),
       renderDecision({
         id: recordId,
-        title: recordTitle,
+        title: RECORD_TITLE,
         status: "accepted",
         date: today,
         context:
@@ -176,15 +192,16 @@ async function writeStarterDecisions(
     );
     written.push(recordId);
   }
-  if (components.length > 0) {
-    const mapTitle = "Initial architecture map";
-    const mapId = ids[1] ?? "0002";
+  // A map decision the team already accepted (or rejected) is theirs; only a still-proposed one is regenerated in place.
+  const previousMap = ids.map.existing;
+  if (components.length > 0 && (previousMap === undefined || previousMap.status === "proposed")) {
+    const mapId = ids.map.id;
     const layerLines = layers.map((layer, i) => `${i + 1}. ${layer.join(", ")}`);
     await write(
-      decisionPath(mapId, mapTitle),
+      previousMap?.file ?? decisionPath(mapId, MAP_TITLE),
       renderDecision({
         id: mapId,
-        title: mapTitle,
+        title: MAP_TITLE,
         status: "proposed",
         date: today,
         governs: components.map((component) => component.id),

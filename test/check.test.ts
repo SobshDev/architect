@@ -90,4 +90,12 @@ describe("check on the shop fixture", () => {
     expect(result.exitCode).toBe(2);
     expect(result.stdout.toString()).toContain("nowhere");
   });
+
+  test("file arguments are resolved against the working directory", async () => {
+    const dir = copyFixture();
+    const fromRoot = (await runCheck(dir, { files: ["src/domain/order.ts"], today: TODAY })).report;
+    const fromFolder = (await runCheck(join(dir, "src/domain"), { files: ["./order.ts"], today: TODAY })).report;
+    expect(fromRoot.summary.errors).toBeGreaterThan(0);
+    expect(fromFolder.findings).toEqual(fromRoot.findings);
+  });
 });
