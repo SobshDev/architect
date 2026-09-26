@@ -1,0 +1,1 @@
+{ "name": "@acme/ui", "exports": { "./*.css": "./src/*.css", "./*": "./src/*.tsx" } }

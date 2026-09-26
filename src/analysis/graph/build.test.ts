@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
 import type { Architecture, EdgeTarget, FileFacts, LanguageAnalyzer, RawImport } from "../../model/index.ts";
 import { ArchitectureSchema, MemorySource, dirOf } from "../../model/index.ts";
+import { WorktreeSource } from "../source/index.ts";
 import { buildGraphWith } from "./build.ts";
 import type { BuildGraphOptions } from "./build.ts";
 
@@ -213,4 +214,37 @@ test("coverage lists languages, unmapped files, unresolved and dynamic imports, 
     { from: "src/app/main.toy", package: "react", specifier: "react", kind: "static", line: 3, analyzer: "typescript" },
     { from: "src/app/main.toy", package: "node:fs", builtin: true, specifier: "node:fs", kind: "static", line: 4, analyzer: "typescript" },
   ]);
+});
+
+test("an import of a workspace package without a matching file keeps its edge and counts as unresolved", async () => {
+  const { coverage, graph } = await fresh({
+    ...base,
+    "package.json": JSON.stringify({ workspaces: ["packages/*"] }),
+    "packages/nodep/package.json": JSON.stringify({ name: "nodep" }),
+    "src/app/ws.toy": "import nodep",
+  });
+  expect(graph.edges.find((e) => e.from === "src/app/ws.toy")).toMatchObject({ workspace: "nodep" });
+  expect(coverage.unresolved_imports).toContainEqual({ file: "src/app/ws.toy", line: 1, specifier: "nodep" });
+});
+
+test("an unreadable file is reported as a parse error and retried once readable", async () => {
+  const root = await mkdtemp(join(tmpdir(), "architect-unreadable-"));
+  try {
+    for (const [path, text] of Object.entries(base)) {
+      await mkdir(join(root, dirOf(path)), { recursive: true });
+      await writeFile(join(root, path), text);
+    }
+    const locked = join(root, "src/lib/old.toy");
+    await chmod(locked, 0o000);
+    const options = { cacheDir: join(root, ".cache") };
+    const first = await buildGraphWith([toyAnalyzer([])], new WorktreeSource(root), architecture, options);
+    expect(first.coverage.parse_errors).toContainEqual({ file: "src/lib/old.toy", message: "unreadable: EACCES" });
+    expect(first.graph.edges.some((e) => e.from === "src/app/main.toy" && e.to === "src/lib/util.toy")).toBe(true);
+
+    await chmod(locked, 0o644);
+    const second = await buildGraphWith([toyAnalyzer([])], new WorktreeSource(root), architecture, options);
+    expect(second.coverage.parse_errors.map((e) => e.file)).toEqual(["scripts/tool.toy"]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

@@ -24,24 +24,31 @@ export function fileDecisionId(file: string): string | null {
   return match ? normalizeDecisionId(match[0]) : null;
 }
 
+/** Status words other than the canonical ones, mapped to a canonical status. */
+const STATUS_ALIASES: Record<string, DecisionStatus> = { approved: "accepted", adopted: "accepted", draft: "proposed" };
+
+/** Reads the status word at the start of free text such as "Accepted ✅", "**Deprecated**", or "accepted (2021-03-01)". */
 function normalizeStatus(raw: string): { status: DecisionStatus; supersededBy?: string } | null {
-  const text = raw.replace(/[*_\u0060]/g, "").trim().toLowerCase();
-  const superseded = /^superseded(?:\s+by\s+([\s\S]*))?$/.exec(text);
-  if (superseded) {
-    const by = superseded[1] === undefined ? null : normalizeDecisionId(superseded[1]);
-    return by === null ? { status: "superseded" } : { status: "superseded", supersededBy: by };
-  }
-  if (text === "draft") return { status: "proposed" };
-  const known = DecisionStatusSchema.safeParse(text);
-  return known.success ? { status: known.data } : null;
+  const lower = raw.replace(/[*_\u0060]/g, "").toLowerCase();
+  const word = /^[^a-z]*([a-z]+)/.exec(lower)?.[1];
+  if (word === undefined) return null;
+  const status = STATUS_ALIASES[word] ?? DecisionStatusSchema.safeParse(word).data;
+  if (status === undefined) return null;
+  if (status !== "superseded") return { status };
+  const rest = /\bsuperseded\s+by\b([\s\S]*)/.exec(lower)?.[1];
+  const by = rest === undefined ? null : normalizeDecisionId(rest);
+  return by === null ? { status } : { status, supersededBy: by };
 }
 
-/** A field written in the body: a "## Name" section's first line, or a MADR 2 bullet such as "* Status: accepted". */
+/**
+ * A field written in the body: a "## Name" section's first line, or a MADR 2 line such as "* Status: accepted"
+ * (the bullet and bold markers are optional).
+ */
 function bodyField(body: string, name: string): string | undefined {
   const section = markdownSections(body).find((s) => s.heading.toLowerCase() === name);
   const line = section?.text.split("\n").find((l) => l.trim() !== "");
   if (line !== undefined) return line.replace(/^\s*[*-]\s+/, "").trim();
-  const bullet = new RegExp(`^\\s*[*-]\\s+${name}:\\s*(.+?)\\s*$`, "im").exec(body);
+  const bullet = new RegExp(`^\\s*(?:[*-]\\s+)?(?:\\*\\*)?${name}(?:\\*\\*)?:(?:\\*\\*)?\\s*(.+?)\\s*$`, "im").exec(body);
   return bullet?.[1];
 }
 
@@ -98,6 +105,10 @@ export function parseDecision(file: string, text: string, options: { imported?: 
   if (fm["decision-makers"] === undefined && fm.deciders !== undefined) {
     makers = stringList(fm.deciders);
     if (makers === null) issues.push(issue(level, file, "expected a string or a list of strings", "deciders"));
+  }
+  if (fm["decision-makers"] === undefined && fm.deciders === undefined) {
+    const written = bodyField(body, "decision-makers") ?? bodyField(body, "deciders");
+    if (written !== undefined) makers = stringList(written);
   }
 
   const date = (fm.date ?? bodyField(body, "date"))?.trim();

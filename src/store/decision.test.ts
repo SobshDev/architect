@@ -11,6 +11,13 @@ describe("status normalization", () => {
     ["superseded by ADR-0123", "superseded", "0123"],
     ["Superseded by [ADR-0005](0005-x.md)", "superseded", "0005"],
     ["superseded", "superseded", undefined],
+    ["Accepted ✅", "accepted", undefined],
+    ["accepted (2021-03-01)", "accepted", undefined],
+    ["**Deprecated**", "deprecated", undefined],
+    ["_Superseded_ by [ADR-0005](0005-x.md)", "superseded", "0005"],
+    ["Approved", "accepted", undefined],
+    ["adopted.", "accepted", undefined],
+    ["DRAFT - needs review", "proposed", undefined],
   ])("%p", (raw, status, by) => {
     const { decision, issues } = parseDecision(F, withFront(`status: "${raw}"`));
     expect(decision.status).toBe(status as never);
@@ -39,6 +46,19 @@ describe("status normalization", () => {
     expect(decision.status).toBe("superseded");
     expect(decision.superseded_by).toBe("0010");
     expect(decision.date).toBe("2020-01-01");
+  });
+
+  test("decision makers from MADR 2 lines, bulleted or not", () => {
+    const makers = (body: string) => parseDecision(F, `# Use Postgres\n\n* Status: accepted\n${body}\n`).decision.decision_makers;
+    expect(makers("* Deciders: Ann, Bob")).toEqual(["Ann", "Bob"]);
+    expect(makers("- Decision-makers: Ann")).toEqual(["Ann"]);
+    expect(makers("Deciders: Cy")).toEqual(["Cy"]);
+    expect(makers("* **Deciders:** Dee, Eve")).toEqual(["Dee", "Eve"]);
+  });
+
+  test("front matter decision makers win over body lines", () => {
+    const { decision } = parseDecision(F, withFront("status: accepted\ndecision-makers: [Ann]", "# Use Postgres\n\n* Deciders: Bob\n"));
+    expect(decision.decision_makers).toEqual(["Ann"]);
   });
 
   test("a missing status warns for native decisions only", () => {

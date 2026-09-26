@@ -249,3 +249,16 @@ describe("WorktreeSource", () => {
     expect(await new WorktreeSource(root).listFiles()).toEqual(["b.ts", "real/c.ts", "src/a.ts"]);
   });
 });
+
+test("without git on PATH the helpers report no repository and the worktree falls back to a file walk", async () => {
+  const root = repo({ "a.ts": "a\n", "sub/b.ts": "b\n" });
+  const script = [
+    `import { findRepoRoot, headSha, mergeBase, resolveRef, WorktreeSource } from ${JSON.stringify(join(import.meta.dir, "index.ts"))};`,
+    "const root = process.argv[1];",
+    "const out = [await findRepoRoot(root), await resolveRef(root, 'HEAD'), await headSha(root), await mergeBase(root, 'HEAD', 'HEAD'), await new WorktreeSource(root).listFiles()];",
+    "console.log(JSON.stringify(out));",
+  ].join("\n");
+  const result = Bun.spawnSync([process.execPath, "-e", script, root], { env: { ...process.env, PATH: "/nonexistent" } });
+  expect(result.stderr.toString()).toBe("");
+  expect(JSON.parse(result.stdout.toString())).toEqual([null, null, null, null, ["a.ts", "sub/b.ts"]]);
+});

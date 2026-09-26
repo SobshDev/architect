@@ -10,9 +10,17 @@ export interface GitResult {
   stderr: string;
 }
 
-/** Runs git in `cwd` without a shell. Throws only when git cannot start (missing binary or directory). */
+/** Exit code reported when git cannot start (missing binary or directory), as a shell would for a missing command. */
+export const GIT_UNAVAILABLE = 127;
+
+/** Runs git in `cwd` without a shell. Never throws: when git cannot start, the result has code GIT_UNAVAILABLE. */
 export async function tryGit(cwd: string, args: readonly string[]): Promise<GitResult> {
-  const proc = Bun.spawn(["git", ...args], { cwd, env: GIT_ENV, stdin: "ignore", stdout: "pipe", stderr: "pipe" });
+  let proc: Bun.Subprocess<"ignore", "pipe", "pipe">;
+  try {
+    proc = Bun.spawn(["git", ...args], { cwd, env: GIT_ENV, stdin: "ignore", stdout: "pipe", stderr: "pipe" });
+  } catch (error) {
+    return { code: GIT_UNAVAILABLE, stdout: new Uint8Array(), stderr: `git could not start: ${(error as Error).message}` };
+  }
   const [stdout, stderr, code] = await Promise.all([
     new Response(proc.stdout).bytes(),
     new Response(proc.stderr).text(),
@@ -44,13 +52,9 @@ function firstLine(bytes: Uint8Array): string {
 
 /** Top level of the git work tree containing `start`, or null outside git. */
 export async function findRepoRoot(start: string): Promise<string | null> {
-  try {
-    const result = await tryGit(start, ["rev-parse", "--show-toplevel"]);
-    const root = firstLine(result.stdout);
-    return result.code === 0 && root ? root : null;
-  } catch {
-    return null;
-  }
+  const result = await tryGit(start, ["rev-parse", "--show-toplevel"]);
+  const root = firstLine(result.stdout);
+  return result.code === 0 && root ? root : null;
 }
 
 /** Full sha of the commit `ref` names, or null when it does not resolve to a commit. */

@@ -4,7 +4,7 @@ import { createTypeScriptResolver } from "./resolve.ts";
 
 export const typescriptAnalyzer: LanguageAnalyzer = {
   id: "typescript",
-  version: "1",
+  version: "2",
   extensions: [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"],
   analyze: analyzeFile,
   createResolver: createTypeScriptResolver,

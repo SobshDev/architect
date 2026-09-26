@@ -5,13 +5,16 @@ import { MemorySource, SettingsSchema } from "../../model/index.ts";
 import { typescriptAnalyzer } from "./index.ts";
 
 const FIXTURES = join(import.meta.dir, "../../../test/fixtures/ts-resolve");
-const CASES = ["paths", "extends", "references", "workspaces", "relative", "nodenext"];
-const WORKSPACES: WorkspacePackage[] = [
-  { name: "@acme/ui", dir: "packages/ui" },
-  { name: "legacy", dir: "packages/legacy" },
-  { name: "@acme/nomap", dir: "packages/nomap" },
-  { name: "web", dir: "apps/web" },
-];
+const CASES = ["paths", "extends", "references", "workspaces", "relative", "nodenext", "catchall", "assets", "wsassets"];
+const WORKSPACES: Record<string, WorkspacePackage[]> = {
+  workspaces: [
+    { name: "@acme/ui", dir: "packages/ui" },
+    { name: "legacy", dir: "packages/legacy" },
+    { name: "@acme/nomap", dir: "packages/nomap" },
+    { name: "web", dir: "apps/web" },
+  ],
+  wsassets: [{ name: "@acme/ui", dir: "packages/ui" }],
+};
 
 async function loadFixture(name: string, label?: string): Promise<MemorySource> {
   const dir = join(FIXTURES, name);
@@ -23,7 +26,7 @@ async function loadFixture(name: string, label?: string): Promise<MemorySource> 
 /** Analyzes every source file and resolves every import. Keys are "file kind specifier". */
 async function resolveAll(source: FileSource, tsconfig?: string): Promise<Record<string, EdgeTarget>> {
   const files = await source.listFiles();
-  const workspaces = source.root.endsWith("/workspaces") ? WORKSPACES : [];
+  const workspaces = WORKSPACES[source.root.slice(source.root.lastIndexOf("/") + 1)] ?? [];
   const resolver = await typescriptAnalyzer.createResolver({ source, files, workspaces, settings: SettingsSchema.parse({ tsconfig }) });
   const out: Record<string, EdgeTarget> = {};
   for (const path of files) {
@@ -47,6 +50,30 @@ describe("typescript resolver", () => {
     expect(r["src/a.ts static @/missing"]).toEqual({ unresolved: true });
     expect(r["src/a.ts static react"]).toEqual({ package: "react" });
     expect(r["src/a.ts static @scope/pkg/deep/path"]).toEqual({ package: "@scope/pkg" });
+  });
+
+  test("a catch-all paths pattern that finds no file falls back to the external package", async () => {
+    const r = await resolveAll(await loadFixture("catchall"));
+    const m = "src/main.ts static ";
+    expect(r[m + "react"]).toEqual({ package: "react" });
+    expect(r[m + "zod/v4"]).toEqual({ package: "zod" });
+    expect(r[m + "@scope/name/sub"]).toEqual({ package: "@scope/name" });
+    expect(r[m + "mytype"]).toEqual({ to: "types/mytype.ts" });
+    expect(r[m + "helper"]).toEqual({ to: "src/helper.ts" });
+    expect(r[m + "@web/helper"]).toEqual({ to: "src/helper.ts" });
+    // The more specific named alias wins over "*", and its miss stays unresolved.
+    expect(r[m + "@web/missing"]).toEqual({ unresolved: true });
+  });
+
+  test("aliased assets and bundler query suffixes resolve to the listed file", async () => {
+    const r = await resolveAll(await loadFixture("assets"));
+    const m = "src/main.ts ";
+    expect(r[m + "side-effect @/index.css"]).toEqual({ to: "src/index.css" });
+    expect(r[m + "static @/assets/logo.png"]).toEqual({ to: "src/assets/logo.png" });
+    expect(r[m + "static ./worker.ts?worker&url"]).toEqual({ to: "src/worker.ts" });
+    expect(r[m + "static ./a.svg?raw"]).toEqual({ to: "src/a.svg" });
+    expect(r[m + "static @/a.svg?raw#frag"]).toEqual({ to: "src/a.svg" });
+    expect(r[m + "side-effect @/nope.css"]).toEqual({ unresolved: true });
   });
 
   test("extends chains across files and skips a missing package link", async () => {
@@ -74,6 +101,14 @@ describe("typescript resolver", () => {
     expect(r[page + "legacy"]).toEqual({ to: "packages/legacy/src/main.js", workspace: "legacy" });
     expect(r[page + "@acme/nomap"]).toEqual({ workspace: "@acme/nomap" });
     expect(r[page + "react"]).toEqual({ package: "react" });
+  });
+
+  test("workspace exports can name asset files; a missing subpath keeps only the workspace", async () => {
+    const r = await resolveAll(await loadFixture("wsassets"));
+    const m = "app/main.ts ";
+    expect(r[m + "side-effect @acme/ui/theme.css"]).toEqual({ to: "packages/ui/src/theme.css", workspace: "@acme/ui" });
+    expect(r[m + "static @acme/ui/button"]).toEqual({ to: "packages/ui/src/button.tsx", workspace: "@acme/ui" });
+    expect(r[m + "static @acme/ui/missing"]).toEqual({ workspace: "@acme/ui" });
   });
 
   test("built-ins", async () => {

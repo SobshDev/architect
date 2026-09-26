@@ -33,6 +33,8 @@ interface Context {
   nodeModes: boolean;
   cache: ts.ModuleResolutionCache;
   pathPatterns: string[];
+  /** Repo-relative folder that "paths" substitutions are relative to, or null when outside the repo. */
+  pathsBase: string | null;
 }
 
 export function packageName(specifier: string): string {
@@ -50,6 +52,12 @@ function inNodeModules(path: string): boolean {
 
 function isRelative(specifier: string): boolean {
   return specifier === "." || specifier === ".." || specifier.startsWith("./") || specifier.startsWith("../") || specifier.startsWith("/");
+}
+
+/** Drops a bundler query or hash suffix: "./worker.ts?worker&url" and "./a.svg#icon" name "./worker.ts" and "./a.svg". A leading "#" (subpath import) stays. */
+function withoutQuery(specifier: string): string {
+  const cut = specifier.slice(1).search(/[?#]/);
+  return cut < 0 ? specifier : specifier.slice(0, cut + 1);
 }
 
 function isObject(value: unknown): value is Json {
@@ -298,12 +306,14 @@ export async function createTypeScriptResolver(input: ResolverInput): Promise<Im
     if (!context) {
       const options: ts.CompilerOptions = { ...(key === "" ? {} : parseConfig(key).options), allowJs: true, resolveJsonModule: true };
       options.moduleResolution = moduleResolutionOf(options);
+      const base = options.baseUrl ?? (options as { pathsBasePath?: unknown }).pathsBasePath;
       context = {
         key,
         options,
         nodeModes: options.moduleResolution !== ts.ModuleResolutionKind.Bundler,
         cache: ts.createModuleResolutionCache(root, (s) => s, options),
         pathPatterns: Object.keys(options.paths ?? {}),
+        pathsBase: typeof base === "string" ? toRelative(base) : null,
       };
       contexts.set(key, context);
     }
@@ -358,6 +368,28 @@ export async function createTypeScriptResolver(input: ResolverInput): Promise<Im
     return null;
   };
 
+  /** The "paths" pattern TypeScript would apply: an exact key first, then the longest prefix before "*". */
+  const pathsMatch = (context: Context, specifier: string): { pattern: string; captured: string } | null => {
+    let best: { pattern: string; captured: string } | null = null;
+    for (const pattern of context.pathPatterns) {
+      const captured = matchesPattern(pattern, specifier);
+      if (captured === null) continue;
+      if (!pattern.includes("*")) return { pattern, captured };
+      if (best === null || pattern.indexOf("*") > best.pattern.indexOf("*")) best = { pattern, captured };
+    }
+    return best;
+  };
+
+  /** A listed file a "paths" substitution names, including non-code files such as "@/index.css" that TypeScript skips. */
+  const pathsFile = (context: Context, match: { pattern: string; captured: string }): string | null => {
+    if (context.pathsBase === null) return null;
+    for (const substitution of context.options.paths?.[match.pattern] ?? []) {
+      const found = probe(context.pathsBase, substitution.replace("*", match.captured));
+      if (found) return found;
+    }
+    return null;
+  };
+
   const packages = new Map<string, Json | null>();
   const packageJson = (dir: string): Json | null => {
     if (!packages.has(dir)) {
@@ -367,7 +399,7 @@ export async function createTypeScriptResolver(input: ResolverInput): Promise<Im
     return packages.get(dir) ?? null;
   };
 
-  /** Maps a package target (possibly build output or a declaration file) to a listed source file. */
+  /** Maps a package target (possibly build output or a declaration file) to a listed source or asset file. */
   const mapToSource = (pkgDir: string, target: string): string | null => {
     const path = toRepoPath(posix.join(pkgDir, target));
     if (!contains(pkgDir, path)) return null;
@@ -375,7 +407,7 @@ export async function createTypeScriptResolver(input: ResolverInput): Promise<Im
     const declaration = /\.d\.[mc]?ts$/.test(path);
     const segments = inPackage.split("/");
     const build = segments.length > 1 && BUILD_DIRS.has(segments[0] as string);
-    if (!declaration && !build && internal(path) && (SOURCE_EXTENSIONS.includes(posix.extname(path)) || path.endsWith(".json"))) return path;
+    if (!declaration && !build && internal(path)) return path;
     const stem = (p: string) => p.replace(/(\.d)?\.[mc]?[jt]sx?$/, "");
     const stems = build ? [posix.join(pkgDir, "src", stem(segments.slice(1).join("/"))), posix.join(pkgDir, stem(segments.slice(1).join("/")))] : [stem(path)];
     for (const s of stems) {
@@ -400,7 +432,7 @@ export async function createTypeScriptResolver(input: ResolverInput): Promise<Im
   };
 
   const classify = (from: string, raw: RawImport): EdgeTarget => {
-    const specifier = raw.specifier;
+    const specifier = withoutQuery(raw.specifier);
     const builtin = builtinTarget(specifier);
     if (builtin) return builtin;
     const dir = dirOf(from);
@@ -421,11 +453,18 @@ export async function createTypeScriptResolver(input: ResolverInput): Promise<Im
       const to = tsResolve(specifier, from, context, mode);
       if (to) return workspace ? { to, workspace: name } : { to };
     }
+    const alias = pathsMatch(context, specifier);
+    if (alias) {
+      const to = pathsFile(context, alias);
+      if (to) return workspace ? { to, workspace: name } : { to };
+    }
     if (workspace) {
       const to = workspaceTarget(workspace, specifier);
       return to ? { to, workspace: name } : { workspace: name };
     }
-    if (context.pathPatterns.some((p) => matchesPattern(p, specifier) !== null)) return { unresolved: true };
+    // A named alias ("@/x", "~lib") that finds no file is unresolved. A catch-all pattern ("*", "*.js") also
+    // covers every package import, so a miss there is the external package the specifier names.
+    if (alias && !alias.pattern.startsWith("*")) return { unresolved: true };
     return { package: name };
   };
 

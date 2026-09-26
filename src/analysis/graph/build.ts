@@ -172,7 +172,8 @@ async function buildWorktree(ctx: Context, cacheDir: string | undefined): Promis
     const kept: Record<string, string> = {};
     for (const path of facts.keys()) {
       const stamp = stamps[path];
-      if (stamp !== undefined) kept[path] = stamp;
+      // No stamp for unreadable files, so the next build tries them again.
+      if (stamp !== undefined && !extracted.unreadable.has(path)) kept[path] = stamp;
     }
     await saveWorktree(ctx, cacheDir, { files: listed, stamps: kept, configs, graph });
   }
@@ -244,7 +245,7 @@ async function buildHook(ctx: Context, cacheDir: string, touchedPaths: readonly 
   const extracted = await extractFacts(ctx, fresh, null);
   for (const [path, f] of extracted.facts) {
     facts.set(path, f);
-    nextStamps[path] = stamps[path] as string;
+    if (!extracted.unreadable.has(path)) nextStamps[path] = stamps[path] as string;
   }
 
   const edges = await updateEdges(ctx, listed, prev.graph.workspaces, facts, prev.graph.edges, new Set(fresh), removed);
@@ -277,15 +278,17 @@ async function stampAll(source: FileSource, paths: readonly string[]): Promise<R
 /**
  * Facts for the paths, from the content-addressed store when possible. knownIds maps paths to their
  * contentId when the source already knows it (git blobs), which skips reading cached files.
- * Paths the source cannot read are left out.
+ * Missing and binary paths are left out. Paths that exist but cannot be read get empty facts with a
+ * parseError such as "unreadable: EACCES"; they are listed in `unreadable` and never stored.
  */
 async function extractFacts(
   ctx: Context,
   paths: readonly string[],
   store: FactsStore | null,
   knownIds: Record<string, string> = {},
-): Promise<{ facts: Map<string, FileFacts>; parsed: number }> {
+): Promise<{ facts: Map<string, FileFacts>; parsed: number; unreadable: Set<string> }> {
   const facts = new Map<string, FileFacts>();
+  const unreadable = new Set<string>();
   let parsed = 0;
   const toRead: string[] = [];
   for (const path of paths) {
@@ -295,7 +298,16 @@ async function extractFacts(
     else toRead.push(path);
   }
   for (let i = 0; i < toRead.length; i += BATCH) {
-    const texts = await ctx.source.readFiles(toRead.slice(i, i + BATCH));
+    const batch = toRead.slice(i, i + BATCH);
+    const texts = await ctx.source.readFiles(batch);
+    for (const path of batch) {
+      if (texts.has(path)) continue;
+      const message = await readFailure(ctx.source, path);
+      if (message === null) continue;
+      const empty = withPath(path, analyzerOf(ctx, path).analyze(path, "", contentId("")));
+      facts.set(path, { ...empty, parseError: message });
+      unreadable.add(path);
+    }
     for (const [path, text] of texts) {
       const analyzer = analyzerOf(ctx, path);
       const id = contentId(text);
@@ -314,7 +326,18 @@ async function extractFacts(
       }
     }
   }
-  return { facts, parsed };
+  return { facts, parsed, unreadable };
+}
+
+/** Why a path left out of readFiles cannot be read ("unreadable: EACCES"), or null when it is just missing or binary. */
+async function readFailure(source: FileSource, path: string): Promise<string | null> {
+  try {
+    await source.readFile(path);
+    return null;
+  } catch (error) {
+    const code = (error as { code?: unknown } | null)?.code;
+    return `unreadable: ${typeof code === "string" ? code : (error as Error).message}`;
+  }
 }
 
 function factsKey(analyzer: LanguageAnalyzer, id: string): string {
@@ -338,10 +361,15 @@ async function updateEdges(
   removed: ReadonlySet<string>,
 ): Promise<Edge[]> {
   const redo = new Set(changed);
-  for (const edge of previous) if (edge.unresolved || (edge.to !== undefined && removed.has(edge.to))) redo.add(edge.from);
+  for (const edge of previous) if (missingTarget(edge) || (edge.to !== undefined && removed.has(edge.to))) redo.add(edge.from);
   const kept = previous.filter((e) => facts.has(e.from) && !redo.has(e.from));
   const again = [...redo].flatMap((path) => facts.get(path) ?? []);
   return [...kept, ...(await resolveImports(ctx, listed, workspaces, again))];
+}
+
+/** An import whose file was not found: unresolved, or into a workspace package without a matching file (pkg/missing). */
+function missingTarget(edge: Edge): boolean {
+  return edge.unresolved === true || (edge.workspace !== undefined && edge.to === undefined);
 }
 
 async function resolveImports(
@@ -426,7 +454,7 @@ export function computeCoverage(graph: Graph, architecture: Architecture): Cover
   const languages: Record<string, number> = {};
   for (const lang of [...counts.keys()].sort()) languages[lang] = counts.get(lang) as number;
   const unresolved = graph.edges
-    .filter((e) => e.unresolved)
+    .filter(missingTarget)
     .map((e) => ({ file: e.from, line: e.line, specifier: e.specifier }))
     .sort((a, b) => cmp(a.file, b.file) || a.line - b.line || cmp(a.specifier, b.specifier));
   return {

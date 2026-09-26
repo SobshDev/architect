@@ -26,6 +26,7 @@ export class WorktreeSource implements FileSource {
     return regularFiles(this.root, paths);
   }
 
+  /** Text of the file, or null when it is missing or binary. Throws when it exists but cannot be read (EACCES). */
   async readFile(path: string): Promise<string | null> {
     const absolute = this.resolvePath(path);
     try {
@@ -36,9 +37,10 @@ export class WorktreeSource implements FileSource {
     }
   }
 
+  /** Texts of the readable text files among paths; missing, binary, and unreadable files are left out. */
   async readFiles(paths: readonly string[]): Promise<Map<string, string>> {
     const unique = [...new Set(paths)];
-    const texts = await mapLimit(unique, 64, (path) => this.readFile(path));
+    const texts = await mapLimit(unique, 64, (path) => this.readFile(path).catch(() => null));
     const out = new Map<string, string>();
     unique.forEach((path, i) => {
       const text = texts[i];
