@@ -1,6 +1,7 @@
 import type { Report, Rule } from "../model/index.ts";
 import { createReport } from "../report/index.ts";
 import { applyBaseline, decisionFindings, evaluateRules, metricFindings } from "../rules/index.ts";
+import { driftFindings } from "./install.ts";
 import { analyze, changedSince, contractIssues, hasConfigErrors, openWorkspace, repoPaths, type Workspace } from "./workspace.ts";
 
 export interface CheckOptions {
@@ -48,5 +49,7 @@ export async function checkWorkspace(ws: Workspace, options: CheckOptions = {}):
   const informational =
     scope === "all" ? [...decisionFindings({ graph, architecture, rules, decisions, today: ws.today }), ...metricFindings(graph, architecture)] : [];
   const { findings, fixed } = applyBaseline([...evaluated, ...informational], baseline, { files });
-  return createReport({ command: "check", scope, base: options.base, findings, fixed, configIssues: issues, coverage });
+  // Generated agent files that differ from what sync writes; never baselined, since sync fixes them.
+  const drift = await driftFindings(ws);
+  return createReport({ command: "check", scope, base: options.base, findings: [...findings, ...drift], fixed, configIssues: issues, coverage });
 }

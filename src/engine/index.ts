@@ -20,3 +20,19 @@ export { formatBaselineUpdate, runBaselineUpdate, type BaselineUpdateResult } fr
 export { formatStatus, runStatus, type StatusResult } from "./status.ts";
 export { jsonSchemas, SCHEMA_NAMES, type SchemaName } from "./schema.ts";
 export { runCi, runDiff, type CiOptions, type CiOutcome, type DiffOptions, type DiffOutcome } from "./diff.ts";
+export { openFindings, runContext, type ContextOptions } from "./context.ts";
+export { runHook, type HookRun } from "./hooks.ts";
+export { driftFindings, formatInstall, runInstall, runSync, type InstallResult } from "./install.ts";
+export {
+  formatDecisionLint,
+  formatDecisionList,
+  proposeDecision,
+  runDecisionLint,
+  runDecisionList,
+  runDecisionNew,
+  type DecisionLintResult,
+  type DecisionSummary,
+  type NewDecisionOptions,
+  type ProposalInput,
+  type ProposalResult,
+} from "./decision.ts";

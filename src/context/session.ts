@@ -32,7 +32,10 @@ export function sessionBrief(input: ContextInput): ContextBrief {
   }
   const footer: string[] = [];
   const baselined = (input.findings ?? []).filter((f) => f.status === "baselined").length;
-  if (baselined > 0) footer.push(`${baselined} existing violations are frozen in the baseline. Do not add new ones.`);
+  if (baselined > 0) {
+    const count = baselined === 1 ? "1 existing violation is" : `${baselined} existing violations are`;
+    footer.push(`${count} frozen in the baseline. Do not add new ones.`);
+  }
   footer.push("Before editing, call `architect context --paths <files>` (CLI) or `architect_context` (MCP) with the paths you will edit.");
   return assemble(BRIEF_HEADER, items, footer, budget, []);
 }

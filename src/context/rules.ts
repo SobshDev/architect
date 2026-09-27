@@ -72,7 +72,7 @@ export function describeRule(rule: Rule): string {
     case "external-imports": {
       if (rule.packages !== undefined) return `Only ${codeList(rule.allow_from ?? [])} may import ${codeList(rule.packages)}.`;
       const parts: string[] = [];
-      if (rule.allow !== undefined) parts.push(`may import only the packages ${codeList(rule.allow)}`);
+      if (rule.allow !== undefined) parts.push(rule.allow.length === 0 ? "must not import external packages" : `may import only the packages ${codeList(rule.allow)}`);
       if (rule.forbid !== undefined) parts.push(`must not import ${codeList(rule.forbid)}`);
       return `${codeList(rule.from ?? [])} ${parts.join(" and ")}.`;
     }

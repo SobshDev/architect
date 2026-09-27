@@ -254,7 +254,7 @@ describe("caps", () => {
     const brief = sessionBrief({ ...input, findings: [finding({ rule: "layering", fingerprint: "b", status: "baselined" })] });
     expect(brief.tokens).toBeLessThanOrEqual(600);
     expect(brief.omitted.length).toBeGreaterThan(0);
-    expect(brief.markdown).toContain("1 existing violations are frozen");
+    expect(brief.markdown).toContain("1 existing violation is frozen");
     expect(brief.markdown.endsWith("with the paths you will edit.")).toBe(true);
   });
 
