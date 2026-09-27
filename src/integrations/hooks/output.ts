@@ -52,14 +52,14 @@ export function formatHookOutput(
 /**
  * Matcher strings for the installer. Undefined means the entry has no matcher
  * and fires on every occurrence (Codex ignores matchers for UserPromptSubmit
- * and Stop; SessionStart should run for every source). Claude Code treats
- * "Edit|Write|MultiEdit" as an exact-name list, so it does not match NotebookEdit.
+ * and Stop; SessionStart should run for every source). Claude Code treats a
+ * "|" list as exact tool names, so NotebookEdit matches only when listed.
  */
 export function hookMatchers(agent: HookAgent): Record<HookEvent, string | undefined> {
   return {
     SessionStart: undefined,
     UserPromptSubmit: undefined,
-    PostToolUse: agent === "codex" ? "apply_patch" : "Edit|Write|MultiEdit",
+    PostToolUse: agent === "codex" ? "apply_patch" : "Edit|Write|MultiEdit|NotebookEdit",
     Stop: undefined,
   };
 }
