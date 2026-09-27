@@ -107,6 +107,8 @@ export interface LanguageAnalyzer {
   readonly version: string;
   /** Lowercase file extensions with the dot, such as ".ts". */
   readonly extensions: readonly string[];
+  /** Async setup (such as loading a parser's wasm) run once before the first analyze call. Must be idempotent. */
+  prepare?(): Promise<void>;
   analyze(path: string, text: string, contentId: string): FileFacts;
   createResolver(input: ResolverInput): Promise<ImportResolver>;
 }

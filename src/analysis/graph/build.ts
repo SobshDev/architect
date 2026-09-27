@@ -74,6 +74,19 @@ interface Built {
   cache: CacheState;
 }
 
+const preparing = new WeakMap<LanguageAnalyzer, Promise<void>>();
+
+/** Runs an analyzer's one-time async setup, only when a file of its language actually has to be parsed. */
+function prepared(analyzer: LanguageAnalyzer): Promise<void> {
+  if (analyzer.prepare === undefined) return Promise.resolve();
+  let done = preparing.get(analyzer);
+  if (done === undefined) {
+    done = analyzer.prepare();
+    preparing.set(analyzer, done);
+  }
+  return done;
+}
+
 /** Builds the graph with the given analyzers. index.ts supplies the built-in ones by default. */
 export async function buildGraphWith(
   analyzers: readonly LanguageAnalyzer[],
@@ -304,7 +317,9 @@ async function extractFacts(
       if (texts.has(path)) continue;
       const message = await readFailure(ctx.source, path);
       if (message === null) continue;
-      const empty = withPath(path, analyzerOf(ctx, path).analyze(path, "", contentId("")));
+      const fallback = analyzerOf(ctx, path);
+      await prepared(fallback);
+      const empty = withPath(path, fallback.analyze(path, "", contentId("")));
       facts.set(path, { ...empty, parseError: message });
       unreadable.add(path);
     }
@@ -317,6 +332,7 @@ async function extractFacts(
         facts.set(path, withPath(path, hit));
         continue;
       }
+      await prepared(analyzer);
       const result = withPath(path, analyzer.analyze(path, text, id));
       parsed++;
       facts.set(path, result);
