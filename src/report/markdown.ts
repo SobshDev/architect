@@ -110,10 +110,13 @@ export function formatMarkdown(report: Report): string {
 
   const c = report.coverage;
   const languages = Object.entries(c.languages).map(([lang, n]) => `${esc(lang)} ${n}`);
+  const partial = c.source_files > c.files_analyzed;
+  const notAnalyzed = Object.entries(c.not_analyzed).map(([lang, n]) => `${esc(lang)} ${n}`);
   out.push(
     "#### Coverage",
     "",
-    `${plural(c.files_analyzed, "file")} analyzed${languages.length > 0 ? ` (${languages.join(", ")})` : ""}; ` +
+    `${partial ? `${c.files_analyzed} of ${plural(c.source_files, "source file")}` : plural(c.files_analyzed, "file")} analyzed${languages.length > 0 ? ` (${languages.join(", ")})` : ""}; ` +
+      (partial ? `not analyzed: ${notAnalyzed.join(", ")}; ` : "") +
       [
         plural(c.unmapped_files.length, "unmapped file"),
         plural(c.unresolved_imports.length, "unresolved import"),
@@ -122,6 +125,7 @@ export function formatMarkdown(report: Report): string {
       ].join(", ") +
       ".",
   );
+  for (const inert of c.inert_rules) out.push("", `Rule ${code(inert.rule)} cannot fire: ${esc(inert.reason)}.`);
   const coverageLists: [string, string[]][] = [
     ["Unmapped files", capped(c.unmapped_files, (f) => code(f))],
     ["Unresolved imports", capped(c.unresolved_imports, (i) => `${code(`${i.file}:${i.line}`)} ${code(i.specifier)}`)],

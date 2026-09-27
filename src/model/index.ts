@@ -12,3 +12,4 @@ export * from "./source.ts";
 export * from "./workspace.ts";
 export * from "./version.ts";
 export * from "./order.ts";
+export * from "./languages.ts";

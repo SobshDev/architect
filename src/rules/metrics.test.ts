@@ -42,6 +42,17 @@ describe("metrics", () => {
     expect(metricFindings(three.graph, three.architecture)).toEqual([]);
   });
 
+  test("god component needs the evidence: not on a small sample, and never from tests or scripts", () => {
+    const four = setup(["big", "a", "b", "c"], [], { big: 100 });
+    four.graph.files.push(file("src/big/j.ts", 100));
+    expect(metricFindings(four.graph, four.architecture, { files_analyzed: 5, source_files: 100 })).toEqual([]);
+    const [partial] = metricFindings(four.graph, four.architecture, { files_analyzed: 5, source_files: 8 });
+    expect(partial?.message).toEndWith("Based on the 5 analyzed files, 62% of 8 source files.");
+    const scripted = setup(["tools", "a", "b", "c"], []);
+    for (let i = 0; i < 5; i++) scripted.graph.files.push(file(`src/tools/scripts/s${i}.ts`, 100));
+    expect(metricFindings(scripted.graph, scripted.architecture)).toEqual([]);
+  });
+
   test("unstable dependency when the target is much less stable", () => {
     // s is depended on by p, q and depends on u; u depends on v and w.
     const { architecture, graph } = setup(["p", "q", "s", "u", "v", "w"], [["p", "s"], ["q", "s"], ["s", "u"], ["u", "v"], ["u", "w"]]);

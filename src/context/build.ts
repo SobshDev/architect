@@ -14,7 +14,7 @@ import {
   toRepoPath,
 } from "../model/index.ts";
 import { constraintsFor, describeRule, governsMatch, ruleInvolves } from "./rules.ts";
-import { assemble, BRIEF_HEADER, code, codeList, makeItem, quote, quoteLine, uriFor } from "./text.ts";
+import { assemble, code, codeList, headerWith, makeItem, quote, quoteLine, unanalyzedWarning, uriFor } from "./text.ts";
 import type { ContextBrief, ContextInput, ContextItem } from "./types.ts";
 import { compareText } from "../model/index.ts";
 
@@ -202,7 +202,8 @@ export function build(input: ContextInput, options: BuildOptions): ContextBrief 
     }
   }
 
-  return assemble(BRIEF_HEADER, items, [], budget, components);
+  const unseen = (input.unanalyzed ?? []).map(toRepoPath).filter((p) => pathSet.has(p));
+  return assemble(headerWith(unanalyzedWarning(unseen)), items, [], budget, components);
 }
 
 function outcomeOf(body: string): string | null {

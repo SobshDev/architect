@@ -45,6 +45,7 @@ Add `--format json` when you parse output (`check` and `diff` also take `markdow
 
 1. Get the brief before reading code in depth: `architect context src/billing/invoice.ts --task "add VAT to invoices"`, or `architect_context` with the same paths and task.
 2. Read the governing decisions and the rules the brief lists. Open anything cut for budget with `architect explain` or the resource link.
+   If the brief says Architect does not analyze a file, no rule is checked there: a short brief or a clean check is not permission. Apply the decisions and component contracts by reading them.
 3. Name the components the change touches and the quality scenario at stake (for example "a new tax rule ships without touching checkout").
 4. Plan the change inside the rules: respect layer direction, entrypoints, independence, state owners, and deprecated components.
 5. If the plan needs a rule loosened, a rejected option brought back, or an accepted decision reversed, stop and propose a decision first (workflow 3). Tell the user; do not implement the loosening until a human accepts it.
@@ -80,7 +81,7 @@ Never edit `baseline.json`, `rules.yaml`, waivers, or rule levels to make a find
 
 ### Recover the architecture of an existing repository
 
-1. Run `architect init`. It infers components, writes warn-level rules, freezes current violations into the baseline, and writes starter decisions.
+1. Run `architect init`. It infers components, writes warn-level rules, freezes current violations into the baseline, and writes proposed starter decisions. Read its coverage line: when it warns that most source files are not analyzed, rules and metrics describe only a sample, and `Rule <id> cannot fire` lines name rules that check nothing yet.
 2. Run `architect graph` and compare the inferred components with the code. Fix `architecture.yaml` where folders and responsibilities disagree.
 3. Read the code, READMEs, existing ADRs, and history (`git log` on key folders) to find decisions the team already made.
 4. Write one proposed decision per design choice that already exists, each with verbatim evidence. Describe what is; do not invent intent.

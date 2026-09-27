@@ -17,10 +17,13 @@ exports[`diff and ci on the shop fixture new violations in head are new errors, 
   "coverage": {
     "dynamic_imports": [],
     "files_analyzed": 6,
+    "inert_rules": [],
     "languages": {
       "typescript": 6,
     },
+    "not_analyzed": {},
     "parse_errors": [],
+    "source_files": 6,
     "unmapped_files": [],
     "unresolved_imports": [],
   },

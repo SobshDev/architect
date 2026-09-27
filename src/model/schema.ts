@@ -430,11 +430,17 @@ export const ConfigIssueSchema = z.object({
 
 export const CoverageSchema = z.object({
   files_analyzed: z.number().int(),
+  /** Source files in every recognized language after excludes, analyzed or not. */
+  source_files: z.number().int().default(0),
   languages: z.record(z.string(), z.number().int()),
+  /** Source files per language that no analyzer reads. */
+  not_analyzed: z.record(z.string(), z.number().int()).default({}),
   unmapped_files: z.array(z.string()),
   unresolved_imports: z.array(z.object({ file: z.string(), line: z.number().int(), specifier: z.string() })),
   dynamic_imports: z.array(z.object({ file: z.string(), line: z.number().int(), expression: z.string() })),
   parse_errors: z.array(z.object({ file: z.string(), message: z.string() })),
+  /** Rules that could not report anything on this graph, with the reason. */
+  inert_rules: z.array(z.object({ rule: z.string(), reason: z.string() })).default([]),
 });
 
 export const ReportSummarySchema = z.object({

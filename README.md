@@ -4,7 +4,7 @@ Architect gives coding agents a codebase's design intent before they edit, and c
 
 It stores components, decisions with their reasons, and checkable rules in `.architect/`. Agents read the relevant slice through the CLI, an MCP server, hooks, and a skill. CI fails when a change breaks a rule, or loosens one without an accepted decision. Architect is deterministic: the host agent (Codex, Claude Code, Cursor) does the reasoning, and Architect never calls a model API.
 
-v0.1 analyzes TypeScript/JavaScript and Python. It runs on [Bun](https://bun.sh) 1.3.14 or newer.
+v0.1 analyzes imports in TypeScript/JavaScript and Python, and crate dependencies in Rust `Cargo.toml` manifests. Change history (hotspots, co-change) covers source files in every language. Every report states how many source files were analyzed out of the whole repository, per language, so a clean result on a partly analyzed repository reads as such. It runs on [Bun](https://bun.sh) 1.3.14 or newer.
 
 ## Install
 
@@ -24,7 +24,7 @@ bunx architect install --agent codex   # or claude, or cursor
 bunx architect check --changed         # check your current edits
 ```
 
-`init` infers components from workspaces and top source folders, writes warn-level rules (no cycles, plus the layers it can infer), and freezes current violations into a baseline. From then on only new violations fail, and the baseline can only shrink. Review `.architect/architecture.yaml` and `.architect/rules.yaml`, raise the rules you trust to `error`, and commit the folder. `init --new` writes empty files instead, for designing a new system with your agent.
+`init` infers components from workspaces, crates, and source folders in every language (splitting container folders such as `modules/`, `packages/`, or Swift's `Sources/` into one component per child), writes warn-level rules (no cycles, the layers it observes, and layers suggested by repeated names such as `*Core`/`*Feature`), and freezes current violations into a baseline. It quotes boundary rules already written in `AGENTS.md`, `CLAUDE.md`, or boundary-check scripts in a proposed decision. Every decision it writes is proposed; people accept them. It warns when most source files are in languages Architect does not analyze. From then on only new violations fail, and the baseline can only shrink. Review `.architect/architecture.yaml` and `.architect/rules.yaml`, raise the rules you trust to `error`, and commit the folder. `init --new` writes empty files instead, for designing a new system with your agent.
 
 ## What lives in `.architect/`
 

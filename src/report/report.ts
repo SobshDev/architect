@@ -29,7 +29,17 @@ function byKeys<T>(...keys: ((item: T) => string | number)[]): (a: T, b: T) => n
 }
 
 export function emptyCoverage(): Coverage {
-  return { files_analyzed: 0, languages: {}, unmapped_files: [], unresolved_imports: [], dynamic_imports: [], parse_errors: [] };
+  return {
+    files_analyzed: 0,
+    source_files: 0,
+    languages: {},
+    not_analyzed: {},
+    unmapped_files: [],
+    unresolved_imports: [],
+    dynamic_imports: [],
+    parse_errors: [],
+    inert_rules: [],
+  };
 }
 
 /** Unapproved first, then by rule, type, and message. */
@@ -48,13 +58,18 @@ export function sortWeakenings(weakenings: readonly Weakening[]): Weakening[] {
 function sortCoverage(coverage: Coverage): Coverage {
   const languages: Record<string, number> = {};
   for (const key of Object.keys(coverage.languages).sort(compareText)) languages[key] = coverage.languages[key] ?? 0;
+  const notAnalyzed: Record<string, number> = {};
+  for (const key of Object.keys(coverage.not_analyzed).sort(compareText)) notAnalyzed[key] = coverage.not_analyzed[key] ?? 0;
   return {
     files_analyzed: coverage.files_analyzed,
+    source_files: coverage.source_files,
     languages,
+    not_analyzed: notAnalyzed,
     unmapped_files: [...coverage.unmapped_files].sort(compareText),
     unresolved_imports: [...coverage.unresolved_imports].sort(byKeys((i) => i.file, (i) => i.line, (i) => i.specifier)),
     dynamic_imports: [...coverage.dynamic_imports].sort(byKeys((i) => i.file, (i) => i.line, (i) => i.expression)),
     parse_errors: [...coverage.parse_errors].sort(byKeys((e) => e.file, (e) => e.message)),
+    inert_rules: [...coverage.inert_rules].sort(byKeys((r) => r.rule, (r) => r.reason)),
   };
 }
 

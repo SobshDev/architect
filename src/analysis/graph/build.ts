@@ -37,7 +37,7 @@ import {
   worktreeCachePath,
   writeCache,
 } from "./cache.ts";
-import { extensionOf, selectFiles } from "./select.ts";
+import { analysisKey, countNotAnalyzed, selectFiles } from "./select.ts";
 import { discoverWorkspaces } from "./workspaces.ts";
 
 export interface BuildGraphOptions {
@@ -60,7 +60,7 @@ export interface BuildGraphResult {
 type CacheState = BuildGraphResult["stats"]["cache"];
 
 /** Files whose stamps decide whether every import must be resolved again. */
-const CONFIG_FILE = /(^|\/)(tsconfig[^/]*\.json|jsconfig\.json|package\.json|pnpm-workspace\.yaml|pyproject\.toml|setup\.cfg)$/;
+const CONFIG_FILE = /(^|\/)(tsconfig[^/]*\.json|jsconfig\.json|package\.json|pnpm-workspace\.yaml|pyproject\.toml|setup\.cfg|Cargo\.toml)$/;
 const BATCH = 256;
 
 interface Context {
@@ -68,6 +68,8 @@ interface Context {
   architecture: Architecture;
   analyzers: readonly LanguageAnalyzer[];
   byExtension: Map<string, LanguageAnalyzer>;
+  /** The keys of byExtension. */
+  keySet: ReadonlySet<string>;
   extensions: string[];
   versions: Record<string, string>;
   settingsHash: string;
@@ -79,6 +81,8 @@ interface Context {
 
 interface Built {
   graph: Graph;
+  /** Every file of the version, sorted: what coverage compares the graph with. */
+  listed: readonly string[];
   parsed: number;
   cache: CacheState;
 }
@@ -114,7 +118,7 @@ export async function buildGraphWith(
   const files = built.graph.files.length;
   return {
     graph: built.graph,
-    coverage: computeCoverage(built.graph, architecture),
+    coverage: computeCoverage(built.graph, architecture, built.listed, ctx.extensions),
     stats: { files, parsed: built.parsed, reused: files - built.parsed, ms: Math.round(performance.now() - started), cache: built.cache },
   };
 }
@@ -124,7 +128,7 @@ function context(analyzers: readonly LanguageAnalyzer[], source: FileSource, arc
   const versions: Record<string, string> = {};
   for (const analyzer of analyzers) {
     versions[analyzer.id] = analyzer.version;
-    for (const ext of analyzer.extensions) if (!byExtension.has(ext.toLowerCase())) byExtension.set(ext.toLowerCase(), analyzer);
+    for (const key of [...analyzer.extensions, ...(analyzer.fileNames ?? [])]) if (!byExtension.has(key.toLowerCase())) byExtension.set(key.toLowerCase(), analyzer);
   }
   const writeResources = architecture.resources.filter((r) => r.writes.length > 0);
   // Only ids and matchers change which lines count as writes; owners and descriptions do not.
@@ -138,6 +142,7 @@ function context(analyzers: readonly LanguageAnalyzer[], source: FileSource, arc
     analyzers,
     byExtension,
     extensions: [...byExtension.keys()],
+    keySet: new Set(byExtension.keys()),
     versions,
     settingsHash: fingerprint([stableStringify(architecture.settings), ...(resourcesHash === "" ? [] : [resourcesHash])]),
     writeResources,
@@ -146,7 +151,7 @@ function context(analyzers: readonly LanguageAnalyzer[], source: FileSource, arc
 }
 
 function analyzerOf(ctx: Context, path: string): LanguageAnalyzer {
-  const analyzer = ctx.byExtension.get(extensionOf(path));
+  const analyzer = ctx.byExtension.get(analysisKey(path, ctx.keySet));
   if (!analyzer) throw new Error(`no analyzer for ${path}`);
   return analyzer;
 }
@@ -166,7 +171,7 @@ async function buildWorktree(ctx: Context, cacheDir: string | undefined): Promis
     const workspaces = await discoverWorkspaces(source, listed);
     const { facts, parsed } = await extractFacts(ctx, selected, null);
     const edges = await resolveImports(ctx, listed, workspaces, [...facts.values()]);
-    return { graph: assemble(facts, edges, workspaces), parsed, cache: "none" };
+    return { graph: assemble(facts, edges, workspaces), listed, parsed, cache: "none" };
   }
 
   const loaded = await readCache<WorktreeCache>(worktreeCachePath(cacheDir), "worktree");
@@ -208,7 +213,7 @@ async function buildWorktree(ctx: Context, cacheDir: string | undefined): Promis
     await saveWorktree(ctx, cacheDir, { files: listed, stamps: kept, configs, graph });
   }
   await store.save();
-  return { graph, parsed: extracted.parsed, cache: prev ? "warm" : "cold" };
+  return { graph, listed, parsed: extracted.parsed, cache: prev ? "warm" : "cold" };
 }
 
 /** A source read from git objects: its content never changes, so the finished graph is cached by sha. */
@@ -217,7 +222,7 @@ async function buildCommit(ctx: Context, revision: string, cacheDir: string | un
   const path = cacheDir ? commitCachePath(cacheDir, revision) : null;
   if (path) {
     const cached = await readCache<CommitCache>(path, "commit");
-    if (cached && cached.revision === revision && compatible(ctx, cached)) return { graph: cached.graph, parsed: 0, cache: "warm" };
+    if (cached && cached.revision === revision && compatible(ctx, cached)) return { graph: cached.graph, listed: await source.listFiles(), parsed: 0, cache: "warm" };
   }
   const listed = await source.listFiles();
   const selected = selectFiles(listed, architecture.settings, ctx.extensions);
@@ -233,7 +238,7 @@ async function buildCommit(ctx: Context, revision: string, cacheDir: string | un
     await writeCache(path, entry);
     await store.save();
   }
-  return { graph, parsed, cache: path ? "cold" : "none" };
+  return { graph, listed, parsed, cache: path ? "cold" : "none" };
 }
 
 /** Updates the cached worktree graph for a few touched paths without listing or stating the whole repo. */
@@ -288,7 +293,7 @@ async function buildHook(ctx: Context, cacheDir: string, touchedPaths: readonly 
   }
   const graph = assemble(facts, edges, prev.graph.workspaces);
   await saveWorktree(ctx, cacheDir, { files: listed, stamps: nextStamps, configs: prev.configs, graph });
-  return { graph, parsed: extracted.parsed, cache: "warm" };
+  return { graph, listed, parsed: extracted.parsed, cache: "warm" };
 }
 
 async function saveWorktree(ctx: Context, cacheDir: string, data: Pick<WorktreeCache, "files" | "stamps" | "configs" | "graph">): Promise<void> {
@@ -485,8 +490,11 @@ function assemble(facts: ReadonlyMap<string, FileFacts>, edges: Edge[], workspac
   };
 }
 
-/** What the graph covers and what it could not see, every list sorted. */
-export function computeCoverage(graph: Graph, architecture: Architecture): Coverage {
+/**
+ * What the graph covers and what it could not see, every list sorted. listed is every file of the version and
+ * keys the extensions and file names the analyzers claim; together they count the source files no analyzer read.
+ */
+export function computeCoverage(graph: Graph, architecture: Architecture, listed: readonly string[] = [], keys: readonly string[] = []): Coverage {
   const index = new ComponentIndex(architecture.components, graph.workspaces);
   const counts = new Map<string, number>();
   const unmapped: string[] = [];
@@ -504,12 +512,17 @@ export function computeCoverage(graph: Graph, architecture: Architecture): Cover
     .filter(missingTarget)
     .map((e) => ({ file: e.from, line: e.line, specifier: e.specifier }))
     .sort((a, b) => cmp(a.file, b.file) || a.line - b.line || cmp(a.specifier, b.specifier));
+  const notAnalyzed = countNotAnalyzed(listed, architecture.settings, keys);
+  const missing = Object.values(notAnalyzed).reduce((sum, n) => sum + n, 0);
   return {
     files_analyzed: graph.files.length,
+    source_files: graph.files.length + missing,
     languages,
+    not_analyzed: notAnalyzed,
     unmapped_files: unmapped,
     unresolved_imports: unresolved,
     dynamic_imports: dynamic.sort((a, b) => cmp(a.file, b.file) || a.line - b.line || cmp(a.expression, b.expression)),
     parse_errors: parseErrors,
+    inert_rules: [],
   };
 }

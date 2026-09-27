@@ -23,11 +23,14 @@ const approved: Weakening = { rule: "no-cycles", type: "rule-removed", message: 
 
 const coverage: Coverage = {
   files_analyzed: 312,
+  source_files: 400,
   languages: { typescript: 300, python: 12 },
+  not_analyzed: { rust: 80, go: 8 },
   unmapped_files: ["scripts/b.ts", "scripts/a.ts"],
   unresolved_imports: [{ file: "src/x.ts", line: 4, specifier: "./missing" }],
   dynamic_imports: [{ file: "src/y.ts", line: 9, expression: "import(name)" }],
   parse_errors: [],
+  inert_rules: [{ rule: "no-cycles", reason: "it evaluated 0 edges" }],
 };
 
 /** One report exercising every section; the tool version is pinned so goldens survive releases. */

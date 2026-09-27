@@ -1,7 +1,7 @@
 import { readHistory } from "../analysis/index.ts";
 import { buildContext, type ContextBrief } from "../context/index.ts";
 import { loadCards } from "../knowledge/index.ts";
-import type { Finding, Graph } from "../model/index.ts";
+import { type Finding, type Graph, sourceLanguageOf } from "../model/index.ts";
 import { applyBaseline, evaluateRules } from "../rules/index.ts";
 import { UsageError } from "./errors.ts";
 import { analyze, openWorkspace, repoPaths, requireValidContract, type Workspace } from "./workspace.ts";
@@ -31,9 +31,10 @@ export async function runContext(cwd: string, options: ContextOptions = {}): Pro
   const ws = await openWorkspace(cwd, { today: options.today });
   requireValidContract(ws);
   const paths = options.paths === undefined ? undefined : repoPaths(ws, cwd, options.paths);
-  const { graph } = await analyze(ws);
+  const { graph, coverage } = await analyze(ws);
   const { architecture, rules, decisions } = ws.contract;
   const history = await readHistory(ws.root, graph, architecture, { cacheDir: ws.cacheDir });
+  const inGraph = new Set(graph.files.map((f) => f.path));
   return buildContext({
     architecture,
     rules,
@@ -43,6 +44,8 @@ export async function runContext(cwd: string, options: ContextOptions = {}): Pro
     ...(history ? { history } : {}),
     cards: loadCards(),
     paths,
+    unanalyzed: (paths ?? []).filter((p) => !inGraph.has(p) && sourceLanguageOf(p) !== null),
+    coverage,
     task: options.task,
     budget: options.budget,
     detail: options.detail,

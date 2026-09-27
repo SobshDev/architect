@@ -1,13 +1,16 @@
 export {
+  analyzerKeys,
   BUILTIN_EXCLUDES,
   buildGraph,
   computeCoverage,
   DEFAULT_ANALYZERS,
   discoverWorkspaces,
   selectFiles,
+  selectSourceFiles,
   type BuildGraphOptions,
   type BuildGraphResult,
 } from "./graph/index.ts";
+export { cargoAnalyzer, repoCrates } from "./cargo/index.ts";
 export { readHistory } from "./history/index.ts";
 export { pythonAnalyzer } from "./python/index.ts";
 export {

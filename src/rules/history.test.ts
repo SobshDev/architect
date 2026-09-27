@@ -21,7 +21,7 @@ describe("historyFindings", () => {
     commits: 20,
     filePairs: [],
     componentPairs: [pair("a", "b"), pair("a", "c"), pair("b", "c")],
-    hotspots: Array.from({ length: 12 }, (_, i) => ({ path: `a/f${i}.ts`, churn: 12 - i, loc: 10, score: (12 - i) * 10 })),
+    hotspots: Array.from({ length: 12 }, (_, i) => ({ path: `a/f${i}.ts`, churn: 12 - i, commits: 3, loc: 10, score: (12 - i) * 10 })),
   };
   // b imports a; c imports nothing and nothing imports c.
   const graph: Graph = { version: 1, files: ["a/x.ts", "b/x.ts", "c/x.ts"].map(file), edges: [edge("b/x.ts", "a/x.ts")], workspaces: [] };

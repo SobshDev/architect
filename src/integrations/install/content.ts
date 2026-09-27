@@ -9,7 +9,9 @@ export function guidance(command: string): string[] {
   return [
     "This repository records its design intent in `.architect/`: components in `architecture.yaml`, checked rules in `rules.yaml`, decisions with their reasons in `decisions/`, and accepted existing violations in `baseline.json`.",
     "",
-    "Before editing, read the decisions and rules that govern the files you will touch:",
+    "Architect checks imports in TypeScript, JavaScript, and Python files, and crate dependencies in `Cargo.toml`. It reports nothing about files in other languages, so a clean result there means nothing was checked: follow the decisions and component contracts by reading them.",
+    "",
+    "Before editing files Architect checks, read the decisions and rules that govern them:",
     "",
     "```sh",
     `${command} context --paths <files> --task "<task>"`,
