@@ -279,6 +279,13 @@ async function buildHook(ctx: Context, cacheDir: string, touchedPaths: readonly 
   }
 
   const edges = await updateEdges(ctx, listed, prev.graph.workspaces, facts, prev.graph.edges, new Set(fresh), removed);
+  // The cached file list misses files created or restored outside hooks (a shell command, git checkout), so an
+  // import of such a file looks unresolved here. Relisting the repository tells; a full build runs only when the
+  // listing changed, so imports that never resolve keep the fast path.
+  const edited = new Set(fresh);
+  if (edges.some((edge) => edited.has(edge.from) && missingTarget(edge)) && !sameList(await source.listFiles(), listed)) {
+    return buildWorktree(ctx, cacheDir);
+  }
   const graph = assemble(facts, edges, prev.graph.workspaces);
   await saveWorktree(ctx, cacheDir, { files: listed, stamps: nextStamps, configs: prev.configs, graph });
   return { graph, parsed: extracted.parsed, cache: "warm" };
@@ -405,6 +412,11 @@ async function updateEdges(
 /** An import whose file was not found: unresolved, or into a workspace package without a matching file (pkg/missing). */
 function missingTarget(edge: Edge): boolean {
   return edge.unresolved === true || (edge.workspace !== undefined && edge.to === undefined);
+}
+
+/** True when two sorted path lists are equal. */
+function sameList(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((path, i) => path === b[i]);
 }
 
 async function resolveImports(

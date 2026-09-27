@@ -152,7 +152,7 @@ describe("hook mode", () => {
     const next: Record<string, string> = {
       ...base,
       "src/app/missing.toy": "import ../lib/util",
-      "src/lib/util.toy": "import ./gone\ndynamic x",
+      "src/lib/util.toy": "import react\ndynamic x",
     };
     delete next["src/lib/old.toy"];
     const hook = await build(next, { cacheDir, only: ["src/app/missing.toy", "src/lib/util.toy", "README.md"], deleted: ["src/lib/old.toy"] });
@@ -171,6 +171,15 @@ describe("hook mode", () => {
     const hook = await build(base, { cacheDir, only: ["src/lib/util.toy"] });
     expect(hook.stats).toMatchObject({ cache: "cold", parsed: 5 });
     expect(hook.graph).toEqual((await fresh(base)).graph);
+  });
+
+  test("an edited file importing a file the cache never listed relists the repository instead of reporting it unresolved", async () => {
+    await build(base);
+    // Created by a shell command or git checkout, so no hook saw it.
+    const next = { ...base, "src/lib/extra.toy": "export extra", "src/app/page.toy": "import ../lib/extra" };
+    const hook = await build(next, { cacheDir, only: ["src/app/page.toy"] });
+    expect(hook.graph.edges).toContainEqual(expect.objectContaining({ from: "src/app/page.toy", to: "src/lib/extra.toy" }));
+    expect({ graph: hook.graph, coverage: hook.coverage }).toEqual(await fresh(next));
   });
 
   test("a touched config file triggers a full re-resolution", async () => {
