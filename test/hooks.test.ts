@@ -67,7 +67,7 @@ describe("acceptance 1: hooks block a forbidden import and pass once it is fixed
     expect(blocked.output.decision).toBe("block");
     expect(blocked.output.reason).toContain("domain-is-pure");
     expect(blocked.output.reason).toContain("src/domain/money.ts:1");
-    expect(blocked.output.reason).toContain('"Keep the domain pure"');
+    expect(blocked.output.reason).toContain('"Keep the domain pure" (.architect/decisions/0002-keep-the-domain-pure.md)');
     expect(blocked.output.reason).toContain("Fix:");
     expect(blocked.output.reason).not.toContain("src/domain/order.ts");
 

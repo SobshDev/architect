@@ -13,7 +13,7 @@ import {
   type HookInput,
   type HookResult,
 } from "../integrations/index.ts";
-import { ARCHITECT_DIR, compareText, toRepoPath, type Finding } from "../model/index.ts";
+import { ARCHITECT_DIR, compareText, normalizeDecisionId, toRepoPath, type Finding } from "../model/index.ts";
 import { CONTRACT_PATHS } from "../store/index.ts";
 import { openFindings } from "./context.ts";
 import { analyze, contractIssues, hasConfigErrors, openWorkspace, type Workspace } from "./workspace.ts";
@@ -230,13 +230,17 @@ function inRepo(ws: Workspace, paths: readonly string[]): string[] {
 }
 
 function describe(ws: Workspace, findings: readonly Finding[]): string {
-  const titles = new Map(ws.contract.decisions.map((decision) => [decision.id, decision.title]));
+  // Rules may cite "2" for decision 0002, so ids are normalized before the lookup.
+  const decisions = new Map(ws.contract.decisions.map((decision) => [decision.id, decision]));
   const lines: string[] = [];
   for (const finding of findings.slice(0, MAX_LISTED)) {
     const where = finding.location ? `${finding.location.file}${finding.location.line ? `:${finding.location.line}` : ""} ` : "";
     lines.push(`- ${finding.rule} (${finding.level}) ${where}${finding.message}`);
     if (finding.because.length > 0) {
-      const why = finding.because.map((id) => (titles.has(id) ? `decision ${id} "${titles.get(id)}"` : `decision ${id}`));
+      const why = finding.because.map((ref) => {
+        const decision = decisions.get(normalizeDecisionId(ref) ?? ref);
+        return decision === undefined ? `decision ${ref}` : `decision ${decision.id} "${decision.title}" (${decision.file})`;
+      });
       lines.push(`  Why: ${why.join(", ")}.`);
     }
     if (finding.fix_hint) lines.push(`  Fix: ${finding.fix_hint}`);

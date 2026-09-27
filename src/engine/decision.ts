@@ -230,6 +230,7 @@ export async function proposeDecision(cwd: string, input: ProposalInput, options
   const problems: string[] = [];
   const title = input.title.trim();
   if (title === "") problems.push("title is empty.");
+  else if (/[\r\n]/.test(title)) problems.push("title must be a single line.");
   if (input.context.trim() === "") problems.push("context is empty.");
   if (input.outcome.trim() === "") problems.push("outcome is empty.");
   const choices = input.options.map((option) => option.trim()).filter((option) => option !== "");

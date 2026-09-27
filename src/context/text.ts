@@ -47,8 +47,9 @@ export function codeList(values: readonly string[], max = Number.POSITIVE_INFINI
   return values.length > max ? `${shown}, +${values.length - max} more` : shown;
 }
 
+/** Matches the MCP server's resource URIs, so every link in a brief opens the same resource. */
 export function uriFor(kind: "decisions" | "rules" | "components" | "cards", id: string): string {
-  return `architect://${kind}/${id.replace(/[^A-Za-z0-9._-]/g, "-")}`;
+  return `architect://${kind}/${encodeURIComponent(id)}`;
 }
 
 export function makeItem(kind: ContextItemKind, id: string, uri: string, reason: string, lines: readonly string[]): ContextItem {
