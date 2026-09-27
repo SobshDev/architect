@@ -61,6 +61,7 @@ components:
     description: MCP server entry point.
     paths: [src/mcp]
     kind: entry
+    entrypoints: [src/mcp/index.ts]
   - id: scripts
     description: Repository tooling.
     paths: [scripts]

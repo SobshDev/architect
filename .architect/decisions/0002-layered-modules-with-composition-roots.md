@@ -6,8 +6,8 @@ governs: [model, store, analysis, rules, knowledge, report, diff, context, integ
 assumptions:
   - text: Modules in the same layer never need each other's internals.
     check: base-modules-independent
-  - text: The CLI and the MCP server run the same flows, so neither needs to import the other.
-    check: entry-points-independent
+  - text: The MCP server runs the same engine flows as the CLI, so it never needs the CLI (decision 0008 lets the CLI start the server).
+    check: mcp-never-imports-cli
 evidence:
   - source: docs/plan/v0.1.md
     quote: "`src/cli` and `src/mcp`, which wire everything together."

@@ -21,10 +21,12 @@ rules:
     members: [diff, context, integrations]
     because: ["0002"]
 
-  - id: entry-points-independent
-    kind: independent
-    members: [cli, mcp]
-    because: ["0002"]
+  - id: mcp-never-imports-cli
+    kind: forbid
+    description: The CLI may start the MCP server, but the server never depends on command-line parsing or output.
+    from: [mcp]
+    to: [cli]
+    because: ["0002", "0008"]
 
   - id: no-cycles
     kind: acyclic
@@ -33,7 +35,7 @@ rules:
   - id: public-surfaces
     kind: entrypoints
     description: Modules import each other only through index.ts.
-    targets: [model, store, analysis, rules, knowledge, report, diff, context, integrations, engine]
+    targets: [model, store, analysis, rules, knowledge, report, diff, context, integrations, engine, mcp]
     because: ["0002"]
 
   - id: model-is-pure
