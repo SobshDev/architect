@@ -1,8 +1,8 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { cpSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runCheck, runInit } from "../src/engine/index.ts";
+import { runCheck, runDecisionList, runInit } from "../src/engine/index.ts";
 
 const FIXTURE = join(import.meta.dir, "fixtures/repos/shop");
 const TODAY = "2026-09-26";
@@ -56,5 +56,20 @@ describe("init", () => {
     expect(decisionFiles(dir)).toEqual(first);
     const { report } = await runCheck(dir, { today: TODAY });
     expect(report.config_issues).toEqual([]);
+  });
+
+  test("starter decisions take ids after existing ADRs, so every ADR stays loaded", async () => {
+    const dir = unmappedShop();
+    mkdirSync(join(dir, "docs/adr"), { recursive: true });
+    writeFileSync(join(dir, "docs/adr/0001-use-postgres.md"), "# 1. Use Postgres\n\n## Status\n\nAccepted\n");
+    writeFileSync(join(dir, "docs/adr/0002-use-bun.md"), "# 2. Use Bun\n\n## Status\n\nAccepted\n");
+    await runInit(dir, { today: TODAY });
+    const decisions = await runDecisionList(dir, { today: TODAY });
+    expect(decisions.map((d) => [d.id, d.imported])).toEqual([
+      ["0001", true],
+      ["0002", true],
+      ["0003", false],
+      ["0004", false],
+    ]);
   });
 });

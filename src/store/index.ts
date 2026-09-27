@@ -1,5 +1,5 @@
 export { CONTRACT_PATHS } from "./contract-paths.ts";
-export { type DecisionDraft, decisionPath, nextDecisionId, parseDecision, renderDecision } from "./decision.ts";
+export { type DecisionDraft, decisionPath, fileDecisionId, nextDecisionId, parseDecision, renderDecision } from "./decision.ts";
 export {
   checkEvidence,
   containsQuote,

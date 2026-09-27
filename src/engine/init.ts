@@ -1,4 +1,4 @@
-import { basename, join } from "node:path";
+import { basename, join, posix } from "node:path";
 import { buildGraph, DEFAULT_ANALYZERS, discoverWorkspaces, selectFiles, WorktreeSource } from "../analysis/index.ts";
 import {
   ArchitectureSchema,
@@ -13,6 +13,7 @@ import { componentGraph, evaluateRules, updateBaseline } from "../rules/index.ts
 import {
   CONTRACT_PATHS,
   decisionPath,
+  fileDecisionId,
   loadContract,
   renderDecision,
   serializeArchitecture,
@@ -57,6 +58,8 @@ export async function runInit(cwd: string, options: InitOptions = {}): Promise<I
   }
   const listed = await source.listFiles();
   const adrDirs = ADR_DIR_CANDIDATES.filter((dir) => listed.some((file) => file.startsWith(`${dir}/`) && /^\d+/.test(basename(file)) && file.endsWith(".md")));
+  // The ADRs this init starts importing: the starter decisions take ids after theirs, so no ADR is shadowed.
+  const adrIds = listed.flatMap((file) => (adrDirs.includes(posix.dirname(file)) && file.endsWith(".md") ? [fileDecisionId(file) ?? ""] : [])).filter((id) => id !== "");
   const name = basename(root);
   const written: string[] = [];
   const write = async (path: string, text: string) => {
@@ -68,7 +71,7 @@ export async function runInit(cwd: string, options: InitOptions = {}): Promise<I
     await write(CONTRACT_PATHS.architecture, serializeArchitecture({ version: 1, name, components: [], ...(adrDirs.length > 0 ? { settings: { adr_dirs: adrDirs } } : {}) }));
     await write(CONTRACT_PATHS.rules, serializeRules({ version: 1, rules: [] }));
     await write(CONTRACT_PATHS.baseline, serializeBaseline(BaselineSchema.parse({})));
-    const decisions = await writeStarterDecisions(starterIds(existing.decisions), today, [], [], write);
+    const decisions = await writeStarterDecisions(starterIds(existing.decisions, adrIds), today, [], [], write);
     await write(`${CONTRACT_PATHS.dir}/.gitignore`, "cache/\n");
     return { root, written, components: [], layers: [], excluded: [], adrDirs, baselined: 0, decisions };
   }
@@ -86,7 +89,7 @@ export async function runInit(cwd: string, options: InitOptions = {}): Promise<I
 
   const { graph } = await buildGraph(source, architecture, { cacheDir: join(root, CONTRACT_PATHS.cache) });
   const layers = inferLayers(componentGraph(graph, new ComponentIndex(architecture.components, graph.workspaces)));
-  const ids = starterIds(existing.decisions);
+  const ids = starterIds(existing.decisions, adrIds);
   // The rules cite the map decision, which exists only when components were found.
   const cited = components.length > 0 ? ids.map.id : ids.record.id;
   const rulesInput = {
@@ -134,9 +137,9 @@ export async function runInit(cwd: string, options: InitOptions = {}): Promise<I
   };
 }
 
-/** The next free decision ids after every existing one, native or imported. */
-function nextIds(decisions: readonly Decision[], count: number): string[] {
-  const highest = decisions.reduce((max, decision) => Math.max(max, Number.parseInt(decision.id, 10) || 0), 0);
+/** The next free decision ids after every existing one, native or imported, and after the given taken ids. */
+function nextIds(decisions: readonly Decision[], taken: readonly string[], count: number): string[] {
+  const highest = [...decisions.map((decision) => decision.id), ...taken].reduce((max, id) => Math.max(max, Number.parseInt(id, 10) || 0), 0);
   return Array.from({ length: count }, (_, i) => String(highest + i + 1).padStart(4, "0"));
 }
 
@@ -147,9 +150,9 @@ interface StarterId {
 }
 
 /** Ids for the two starter decisions: existing ones are reused (so init --force never stacks duplicates), new ones take the next free ids. */
-function starterIds(decisions: readonly Decision[]): { record: StarterId; map: StarterId } {
+function starterIds(decisions: readonly Decision[], taken: readonly string[]): { record: StarterId; map: StarterId } {
   const find = (title: string) => decisions.find((decision) => !decision.imported && decision.title.toLowerCase() === title.toLowerCase());
-  const fresh = nextIds(decisions, 2);
+  const fresh = nextIds(decisions, taken, 2);
   const take = () => fresh.shift() ?? "0001";
   const record = find(RECORD_TITLE);
   const map = find(MAP_TITLE);
