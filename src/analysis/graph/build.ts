@@ -7,6 +7,9 @@
 // re-resolves only imports of changed files, imports that were unresolved, and imports that pointed at
 // deleted files. A new file that shadows an existing resolution (for example "./a.ts" appearing next to
 // a resolved "./a/index.ts") is only picked up on a config change or a cold build.
+//
+// Write sites (state ownership) depend on architecture.resources, so a hash of the resources with write
+// matchers goes into the settings hash (worktree and commit caches) and into the facts key.
 import type {
   Architecture,
   Coverage,
@@ -18,9 +21,11 @@ import type {
   ImportResolver,
   LanguageAnalyzer,
   RawImport,
+  Resource,
   WorkspacePackage,
 } from "../../model/index.ts";
 import { ComponentIndex, contentId, fingerprint } from "../../model/index.ts";
+import { findWrites } from "../state/index.ts";
 import type { CommitCache, StoredFacts, WorktreeCache } from "./cache.ts";
 import {
   CACHE_FORMAT,
@@ -66,6 +71,10 @@ interface Context {
   extensions: string[];
   versions: Record<string, string>;
   settingsHash: string;
+  /** Resources with write matchers; empty when no file needs a write scan. */
+  writeResources: readonly Resource[];
+  /** Hash of writeResources, or "" when there are none. */
+  resourcesHash: string;
 }
 
 interface Built {
@@ -117,6 +126,12 @@ function context(analyzers: readonly LanguageAnalyzer[], source: FileSource, arc
     versions[analyzer.id] = analyzer.version;
     for (const ext of analyzer.extensions) if (!byExtension.has(ext.toLowerCase())) byExtension.set(ext.toLowerCase(), analyzer);
   }
+  const writeResources = architecture.resources.filter((r) => r.writes.length > 0);
+  // Only ids and matchers change which lines count as writes; owners and descriptions do not.
+  const resourcesHash =
+    writeResources.length === 0 ? "" : fingerprint([stableStringify(writeResources.map((r) => ({ id: r.id, writes: r.writes })))]);
+  // Compile the matchers now, so an invalid pattern fails before any work.
+  findWrites("", "typescript", writeResources);
   return {
     source,
     architecture,
@@ -124,7 +139,9 @@ function context(analyzers: readonly LanguageAnalyzer[], source: FileSource, arc
     byExtension,
     extensions: [...byExtension.keys()],
     versions,
-    settingsHash: fingerprint([stableStringify(architecture.settings)]),
+    settingsHash: fingerprint([stableStringify(architecture.settings), ...(resourcesHash === "" ? [] : [resourcesHash])]),
+    writeResources,
+    resourcesHash,
   };
 }
 
@@ -306,7 +323,7 @@ async function extractFacts(
   const toRead: string[] = [];
   for (const path of paths) {
     const id = knownIds[path];
-    const hit = store && id && /^[0-9a-f]{40}$/.test(id) ? await store.get(factsKey(analyzerOf(ctx, path), id)) : undefined;
+    const hit = store && id && /^[0-9a-f]{40}$/.test(id) ? await store.get(factsKey(ctx, analyzerOf(ctx, path), id)) : undefined;
     if (hit) facts.set(path, withPath(path, hit));
     else toRead.push(path);
   }
@@ -326,7 +343,7 @@ async function extractFacts(
     for (const [path, text] of texts) {
       const analyzer = analyzerOf(ctx, path);
       const id = contentId(text);
-      const key = factsKey(analyzer, id);
+      const key = factsKey(ctx, analyzer, id);
       const hit = store ? await store.get(key) : undefined;
       if (hit) {
         facts.set(path, withPath(path, hit));
@@ -334,6 +351,7 @@ async function extractFacts(
       }
       await prepared(analyzer);
       const result = withPath(path, analyzer.analyze(path, text, id));
+      if (ctx.writeResources.length > 0) result.writes = findWrites(text, result.language, ctx.writeResources);
       parsed++;
       facts.set(path, result);
       if (store) {
@@ -356,8 +374,9 @@ async function readFailure(source: FileSource, path: string): Promise<string | n
   }
 }
 
-function factsKey(analyzer: LanguageAnalyzer, id: string): string {
-  return `${analyzer.id}@${analyzer.version}:${id}`;
+function factsKey(ctx: Context, analyzer: LanguageAnalyzer, id: string): string {
+  const writes = ctx.resourcesHash === "" ? "" : `+w${ctx.resourcesHash}`;
+  return `${analyzer.id}@${analyzer.version}${writes}:${id}`;
 }
 
 /** Facts with path first, so cached and fresh facts serialize identically. */

@@ -39,13 +39,14 @@ export interface CommitCache {
 export interface FactsCacheFile {
   format: typeof CACHE_FORMAT;
   kind: "facts";
-  /** "<analyzer>@<version>:<contentId>" to facts without the path, most recently used first. */
+  /** "<analyzer>@<version>[+w<resources hash>]:<contentId>" to facts without the path, most recently used first. */
   entries: Record<string, StoredFacts>;
 }
 
 export const worktreeCachePath = (dir: string) => `${dir}/graph/worktree.json`;
 export const commitCachePath = (dir: string, revision: string) => `${dir}/graph/commits/${revision}.json`;
 export const factsCachePath = (dir: string) => `${dir}/graph/facts.json`;
+export const historyCachePath = (dir: string) => `${dir}/history.json`;
 
 /** Parsed cache file of the given kind, or null when it is missing, corrupt, or from another format. */
 export async function readCache<T extends { kind: string }>(path: string, kind: T["kind"]): Promise<T | null> {

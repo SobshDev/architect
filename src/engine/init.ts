@@ -1,5 +1,5 @@
 import { basename, join, posix } from "node:path";
-import { buildGraph, DEFAULT_ANALYZERS, discoverWorkspaces, selectFiles, WorktreeSource } from "../analysis/index.ts";
+import { buildGraph, DEFAULT_ANALYZERS, discoverWorkspaces, readHistory, selectFiles, WorktreeSource } from "../analysis/index.ts";
 import {
   ArchitectureSchema,
   BaselineSchema,
@@ -22,7 +22,7 @@ import {
   writeRepoFile,
 } from "../store/index.ts";
 import { UsageError } from "./errors.ts";
-import { inferComponents, inferLayers } from "./infer.ts";
+import { coChangeClusters, inferComponents, inferLayers, previewFiles, type CoChangeCluster } from "./infer.ts";
 import { findRoot, resolveToday } from "./workspace.ts";
 
 export interface InitOptions {
@@ -42,6 +42,8 @@ export interface InitResult {
   adrDirs: string[];
   baselined: number;
   decisions: string[];
+  /** Files that changed together across the inferred components, from git history. */
+  coChange: CoChangeCluster[];
 }
 
 const ADR_DIR_CANDIDATES = ["docs/adr", "docs/adrs", "doc/adr", "docs/decisions", "docs/architecture/decisions", "adr", "architecture/decisions"];
@@ -71,9 +73,9 @@ export async function runInit(cwd: string, options: InitOptions = {}): Promise<I
     await write(CONTRACT_PATHS.architecture, serializeArchitecture({ version: 1, name, components: [], ...(adrDirs.length > 0 ? { settings: { adr_dirs: adrDirs } } : {}) }));
     await write(CONTRACT_PATHS.rules, serializeRules({ version: 1, rules: [] }));
     await write(CONTRACT_PATHS.baseline, serializeBaseline(BaselineSchema.parse({})));
-    const decisions = await writeStarterDecisions(starterIds(existing.decisions, adrIds), today, [], [], write);
+    const decisions = await writeStarterDecisions(starterIds(existing.decisions, adrIds), today, [], [], [], write);
     await write(`${CONTRACT_PATHS.dir}/.gitignore`, "cache/\n");
-    return { root, written, components: [], layers: [], excluded: [], adrDirs, baselined: 0, decisions };
+    return { root, written, components: [], layers: [], excluded: [], adrDirs, baselined: 0, decisions, coChange: [] };
   }
 
   const workspaces = await discoverWorkspaces(source, listed);
@@ -87,8 +89,12 @@ export async function runInit(cwd: string, options: InitOptions = {}): Promise<I
   const architectureInput = { version: 1 as const, name, components, ...(Object.keys(settings).length > 0 ? { settings } : {}) };
   const architecture = ArchitectureSchema.parse(architectureInput);
 
-  const { graph } = await buildGraph(source, architecture, { cacheDir: join(root, CONTRACT_PATHS.cache) });
-  const layers = inferLayers(componentGraph(graph, new ComponentIndex(architecture.components, graph.workspaces)));
+  const cacheDir = join(root, CONTRACT_PATHS.cache);
+  const { graph } = await buildGraph(source, architecture, { cacheDir });
+  const index = new ComponentIndex(architecture.components, graph.workspaces);
+  const layers = inferLayers(componentGraph(graph, index));
+  const history = await readHistory(root, graph, architecture, { cacheDir });
+  const coChange = history ? coChangeClusters(history.filePairs, (file) => index.of(file)) : [];
   const ids = starterIds(existing.decisions, adrIds);
   // The rules cite the map decision, which exists only when components were found.
   const cited = components.length > 0 ? ids.map.id : ids.record.id;
@@ -123,7 +129,7 @@ export async function runInit(cwd: string, options: InitOptions = {}): Promise<I
   await write(CONTRACT_PATHS.architecture, serializeArchitecture(architectureInput));
   await write(CONTRACT_PATHS.rules, serializeRules(rulesInput));
   await write(CONTRACT_PATHS.baseline, serializeBaseline(baseline));
-  const decisions = await writeStarterDecisions(ids, today, components, layers, write);
+  const decisions = await writeStarterDecisions(ids, today, components, layers, coChange, write);
   await write(`${CONTRACT_PATHS.dir}/.gitignore`, "cache/\n");
   return {
     root,
@@ -134,6 +140,7 @@ export async function runInit(cwd: string, options: InitOptions = {}): Promise<I
     adrDirs,
     baselined: baseline.entries.reduce((sum, entry) => sum + entry.count, 0),
     decisions,
+    coChange,
   };
 }
 
@@ -166,6 +173,7 @@ async function writeStarterDecisions(
   today: string,
   components: readonly Component[],
   layers: readonly string[][],
+  coChange: readonly CoChangeCluster[],
   write: (path: string, text: string) => Promise<void>,
 ): Promise<string[]> {
   const written: string[] = [];
@@ -200,6 +208,7 @@ async function writeStarterDecisions(
   if (components.length > 0 && (previousMap === undefined || previousMap.status === "proposed")) {
     const mapId = ids.map.id;
     const layerLines = layers.map((layer, i) => `${i + 1}. ${layer.join(", ")}`);
+    const coChangeLines = coChange.slice(0, 5).map((c) => `- ${c.components.join(", ")} (${c.support} commits): ${previewFiles(c.files)}`);
     await write(
       previousMap?.file ?? decisionPath(mapId, MAP_TITLE),
       renderDecision({
@@ -213,6 +222,9 @@ async function writeStarterDecisions(
           "",
           `Components: ${components.map((component) => component.id).join(", ")}.`,
           ...(layerLines.length > 0 ? ["", "Observed dependency direction, highest layer first:", "", ...layerLines] : []),
+          ...(coChangeLines.length > 0
+            ? ["", "Files that changed together across these components, from git history; a boundary may cut through one reason to change:", "", ...coChangeLines]
+            : []),
         ].join("\n"),
         options: [
           "Adopt the inferred map as a starting point, with warn-level rules and the current violations frozen in the baseline",
@@ -243,6 +255,10 @@ export function formatInit(result: InitResult): string {
     result.layers.forEach((layer, i) => lines.push(`  ${i + 1}. ${layer.join(", ")}`));
   }
   if (result.excluded.length > 0) lines.push("", `Left out as test code: ${result.excluded.join(", ")}`);
+  if (result.coChange.length > 0) {
+    lines.push("", "Files that change together across components (review these boundaries):");
+    for (const c of result.coChange) lines.push(`  ${c.components.join(" + ")}, ${c.support} commits: ${previewFiles(c.files)}`);
+  }
   if (result.adrDirs.length > 0) lines.push(`Imported existing decisions from: ${result.adrDirs.join(", ")}`);
   if (result.baselined > 0) lines.push(`Froze ${result.baselined} existing violations in the baseline.`);
   lines.push(

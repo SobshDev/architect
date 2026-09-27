@@ -1,3 +1,4 @@
+import { readHistory } from "../analysis/index.ts";
 import { buildContext, type ContextBrief } from "../context/index.ts";
 import { loadCards } from "../knowledge/index.ts";
 import type { Finding, Graph } from "../model/index.ts";
@@ -32,12 +33,14 @@ export async function runContext(cwd: string, options: ContextOptions = {}): Pro
   const paths = options.paths === undefined ? undefined : repoPaths(ws, cwd, options.paths);
   const { graph } = await analyze(ws);
   const { architecture, rules, decisions } = ws.contract;
+  const history = await readHistory(ws.root, graph, architecture, { cacheDir: ws.cacheDir });
   return buildContext({
     architecture,
     rules,
     decisions,
     graph,
     findings: openFindings(ws, graph),
+    ...(history ? { history } : {}),
     cards: loadCards(),
     paths,
     task: options.task,

@@ -1,6 +1,6 @@
 // Infers a first architecture map from the repository layout and the current imports.
 import { basename } from "node:path";
-import { globMatcher, type Component, type ComponentGraph, type WorkspacePackage } from "../model/index.ts";
+import { globMatcher, type CoChangePair, type Component, type ComponentGraph, type WorkspacePackage } from "../model/index.ts";
 import { findCycles } from "../rules/index.ts";
 import { compareText } from "../model/index.ts";
 
@@ -148,4 +148,58 @@ export function inferLayers(graph: ComponentGraph): string[][] {
     layers.set(level, [...(layers.get(level) ?? []), id]);
   }
   return [...layers.keys()].sort((a, b) => b - a).map((level) => (layers.get(level) ?? []).sort());
+}
+
+export interface CoChangeCluster {
+  /** Components the files belong to, sorted. */
+  components: string[];
+  /** Files linked through co-change pairs, sorted. */
+  files: string[];
+  /** The most commits that changed one pair of these files together. */
+  support: number;
+}
+
+/**
+ * Groups of files that change together (linked through co-change pairs) and fall in more than one component:
+ * places where a boundary may cut through one reason to change. Highest support first.
+ */
+export function coChangeClusters(pairs: readonly CoChangePair[], componentOf: (file: string) => string | null, limit = 10): CoChangeCluster[] {
+  const parent = new Map<string, string>();
+  const find = (file: string): string => {
+    let root = file;
+    while ((parent.get(root) ?? root) !== root) root = parent.get(root) as string;
+    for (let node = file; node !== root; ) {
+      const next = parent.get(node) as string;
+      parent.set(node, root);
+      node = next;
+    }
+    return root;
+  };
+  for (const pair of pairs) {
+    const [a, b] = [find(pair.a), find(pair.b)].sort(compareText) as [string, string];
+    if (a !== b) parent.set(b, a);
+  }
+  const groups = new Map<string, { files: Set<string>; support: number }>();
+  for (const pair of pairs) {
+    const root = find(pair.a);
+    const group = groups.get(root) ?? { files: new Set<string>(), support: 0 };
+    group.files.add(pair.a).add(pair.b);
+    group.support = Math.max(group.support, pair.support);
+    groups.set(root, group);
+  }
+  const clusters: CoChangeCluster[] = [];
+  for (const group of groups.values()) {
+    const files = [...group.files].sort(compareText);
+    const components = [...new Set(files.map(componentOf).filter((id): id is string => id !== null))].sort(compareText);
+    if (components.length >= 2) clusters.push({ components, files, support: group.support });
+  }
+  return clusters
+    .sort((x, y) => y.support - x.support || y.files.length - x.files.length || compareText(x.files[0] ?? "", y.files[0] ?? ""))
+    .slice(0, limit);
+}
+
+/** The first few files of a cluster, for one line of text. */
+export function previewFiles(files: readonly string[], shown = 4): string {
+  const head = files.slice(0, shown).join(", ");
+  return files.length > shown ? `${head}, and ${files.length - shown} more` : head;
 }

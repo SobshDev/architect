@@ -1,6 +1,7 @@
+import { readHistory } from "../analysis/index.ts";
 import type { Report, Rule } from "../model/index.ts";
 import { createReport } from "../report/index.ts";
-import { applyBaseline, decisionFindings, evaluateRules, metricFindings } from "../rules/index.ts";
+import { applyBaseline, decisionFindings, evaluateRules, historyFindings, metricFindings } from "../rules/index.ts";
 import { driftFindings } from "./install.ts";
 import { analyze, changedSince, contractIssues, hasConfigErrors, openWorkspace, repoPaths, type Workspace } from "./workspace.ts";
 
@@ -46,8 +47,16 @@ export async function checkWorkspace(ws: Workspace, options: CheckOptions = {}):
   const { graph, coverage } = await analyze(ws);
   const { architecture, rules, decisions, baseline } = ws.contract;
   const evaluated = evaluateRules({ graph, architecture, rules, today: ws.today, files });
+  // Informational findings describe the whole repository, so only a full check computes them.
+  const history = scope === "all" ? await readHistory(ws.root, graph, architecture, { cacheDir: ws.cacheDir }) : null;
   const informational =
-    scope === "all" ? [...decisionFindings({ graph, architecture, rules, decisions, today: ws.today }), ...metricFindings(graph, architecture)] : [];
+    scope === "all"
+      ? [
+          ...decisionFindings({ graph, architecture, rules, decisions, today: ws.today }),
+          ...metricFindings(graph, architecture),
+          ...(history ? historyFindings(history, graph, architecture) : []),
+        ]
+      : [];
   const { findings, fixed } = applyBaseline([...evaluated, ...informational], baseline, { files });
   // Generated agent files that differ from what sync writes; never baselined, since sync fixes them.
   const drift = await driftFindings(ws);

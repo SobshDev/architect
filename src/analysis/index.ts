@@ -8,6 +8,8 @@ export {
   type BuildGraphOptions,
   type BuildGraphResult,
 } from "./graph/index.ts";
+export { readHistory } from "./history/index.ts";
+export { pythonAnalyzer } from "./python/index.ts";
 export {
   changedFiles,
   findRepoRoot,

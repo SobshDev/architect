@@ -1,4 +1,5 @@
 import type { Architecture, FileSource, LanguageAnalyzer } from "../../model/index.ts";
+import { pythonAnalyzer } from "../python/index.ts";
 import { typescriptAnalyzer } from "../typescript/index.ts";
 import type { BuildGraphOptions, BuildGraphResult } from "./build.ts";
 import { buildGraphWith } from "./build.ts";
@@ -8,7 +9,7 @@ export { computeCoverage } from "./build.ts";
 export { BUILTIN_EXCLUDES, selectFiles } from "./select.ts";
 export { discoverWorkspaces } from "./workspaces.ts";
 
-export const DEFAULT_ANALYZERS: readonly LanguageAnalyzer[] = [typescriptAnalyzer];
+export const DEFAULT_ANALYZERS: readonly LanguageAnalyzer[] = [typescriptAnalyzer, pythonAnalyzer];
 
 /** Builds the file dependency graph and its coverage, using the caches under options.cacheDir when set. */
 export function buildGraph(source: FileSource, architecture: Architecture, options: BuildGraphOptions = {}): Promise<BuildGraphResult> {
