@@ -30,7 +30,9 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun test",
-    "check": "bun run typecheck && bun test && bun src/cli/main.ts check && bun src/cli/main.ts decision lint",
+    "check": "bun run typecheck && bun test && bun src/cli/main.ts check && bun src/cli/main.ts decision lint && bun scripts/cards.ts lint",
+    "cards:gen": "bun scripts/cards.ts gen",
+    "cards:lint": "bun scripts/cards.ts lint",
     "corpus:fetch": "bun scripts/corpus-fetch.ts"
   },
   "dependencies": {

@@ -241,7 +241,7 @@ describe("architect_propose_decision", () => {
 });
 
 describe("resources", () => {
-  test("lists and reads decisions, rules, and components", async () => {
+  test("lists and reads decisions, rules, components, and knowledge cards", async () => {
     const client = await connect(shop());
     const { resourceTemplates } = await client.listResourceTemplates();
     expect(resourceTemplates.map((t) => t.uriTemplate).sort()).toEqual([
@@ -253,12 +253,14 @@ describe("resources", () => {
     const { resources } = await client.listResources();
     const uris = resources.map((r) => r.uri);
     expect(uris).toEqual(expect.arrayContaining(["architect://decisions/0002", "architect://rules/domain-is-pure", "architect://components/domain"]));
-    expect(uris.some((uri) => uri.startsWith("architect://cards/"))).toBe(false);
+    expect(uris).toContain("architect://cards/ports-and-adapters");
 
     const read = await client.readResource({ uri: "architect://decisions/0002" });
     const [content] = read.contents;
     expect(content?.mimeType).toBe("text/markdown");
     expect((content as { text: string }).text).toContain("Keep the domain pure");
+    const card = await client.readResource({ uri: "architect://cards/ports-and-adapters" });
+    expect((card.contents[0] as { text: string }).text).toContain("## Solution");
     await client.close();
   });
 });

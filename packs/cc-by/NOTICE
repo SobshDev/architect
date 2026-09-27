@@ -1,0 +1,15 @@
+Architect knowledge pack: cc-by
+Attribution for adapted material. All cards in this pack are CC BY 4.0.
+
+cards/cache-aside.md
+  Adapted from: "The System Design Primer", section "Cache-aside"
+  Author: Donne Martin (Copyright 2017 Donne Martin)
+  Source: https://github.com/donnemartin/system-design-primer#cache-aside
+  Repository: https://github.com/donnemartin/system-design-primer
+  License: Creative Commons Attribution 4.0 International (CC BY 4.0),
+           https://creativecommons.org/licenses/by/4.0/
+  Changes: Reworded the steps, benefits, and disadvantages into card fields
+           and sections; rewrote the Python example to set a time-to-live and
+           to invalidate on write; added forces, use and avoid lists, the
+           consequences discussion, and the In Architect section. The figure
+           was omitted.
