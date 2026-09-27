@@ -1,10 +1,12 @@
 import { stringify } from "yaml";
+import { loadCards, searchCards } from "../knowledge/index.ts";
 import {
   ComponentIndex,
   globMatcher,
   markdownSections,
   normalizeDecisionId,
   sortFindings,
+  type CardKind,
   type Decision,
   type Finding,
   type Rule,
@@ -42,6 +44,9 @@ const KIND_TEXT: Record<RuleKind, string> = {
 const MAX_EXAMPLES = 10;
 
 export async function runExplain(cwd: string, target: string, options: { today?: string } = {}): Promise<Explanation> {
+  // Cards ship with Architect, so explaining one needs no contract.
+  const card = /^card:(.+)$/.exec(target);
+  if (card) return explainCard(card[1] ?? "");
   const ws = await openWorkspace(cwd, options);
   requireValidContract(ws);
   return explainTarget(ws, target);
@@ -57,7 +62,7 @@ export async function explainTarget(ws: Workspace, target: string): Promise<Expl
     case "component":
       return explainComponent(ws, id);
     case "card":
-      throw new UsageError("Knowledge cards are not installed yet.");
+      return explainCard(id);
   }
 }
 
@@ -69,6 +74,7 @@ function parseTarget(ws: Workspace, target: string): { kind: ExplainKind; id: st
   if (ws.contract.architecture.components.some((component) => component.id === target)) hits.push({ kind: "component", id: target });
   const decisionId = /^(adr-?)?\d+$/i.test(target) ? normalizeDecisionId(target) : null;
   if (decisionId !== null && ws.contract.decisions.some((decision) => decision.id === decisionId)) hits.push({ kind: "decision", id: decisionId });
+  if (loadCards().some((card) => card.id === target)) hits.push({ kind: "card", id: target });
   const [only] = hits;
   if (only !== undefined && hits.length === 1) return only;
   if (hits.length === 0) throw new UsageError(`Nothing is named "${target}". Use rule:<id>, decision:<id>, component:<id>, or card:<id>.`);
@@ -78,6 +84,52 @@ function parseTarget(ws: Workspace, target: string): { kind: ExplainKind; id: st
 function findDecision(ws: Workspace, ref: string): Decision | undefined {
   const id = normalizeDecisionId(ref);
   return ws.contract.decisions.find((decision) => decision.id === id);
+}
+
+export interface CardSummary {
+  id: string;
+  kind: CardKind;
+  title: string;
+  summary: string;
+}
+
+/** Every knowledge card shipped with Architect, sorted by id. */
+export function listCards(): CardSummary[] {
+  return loadCards().map(({ id, kind, title, summary }) => ({ id, kind, title, summary }));
+}
+
+function explainCard(id: string): Explanation {
+  const cards = loadCards();
+  const card = cards.find((candidate) => candidate.id === id);
+  if (!card) {
+    const close = searchCards(cards, id.replace(/-/g, " "), { limit: 5 }).map((hit) => `card:${hit.card.id}`);
+    throw new UsageError(`No card "${id}".${close.length > 0 ? ` Close matches: ${close.join(", ")}.` : ""}`);
+  }
+  const section = (heading: string, items: readonly string[]) => (items.length > 0 ? ["", `## ${heading}`, "", ...items.map((item) => `- ${item}`)] : []);
+  const lines = [
+    `# ${card.title} (${card.kind})`,
+    "",
+    card.summary,
+    "",
+    `Problem: ${card.problem}`,
+    ...section("Forces", card.forces),
+    ...section("Use when", card.use_when),
+    ...section("Avoid when", card.avoid_when),
+    ...section("Tradeoffs", card.tradeoffs),
+    ...section("Code signals", card.code_signals),
+  ];
+  if (card.contract_templates.length > 0) {
+    lines.push("", "## Contract templates", "");
+    for (const template of card.contract_templates) lines.push("```yaml", template.trimEnd(), "```");
+  }
+  lines.push("", card.body.trim());
+  if (card.related.length > 0) lines.push("", `Related: ${card.related.map((related) => `card:${related}`).join(", ")}`);
+  lines.push("", "## Sources", "");
+  for (const source of card.sources) {
+    lines.push(`- ${source.title ? `${source.title}: ` : ""}${source.url} (${source.license}, ${source.relation}${source.changes ? `; ${source.changes}` : ""})`);
+  }
+  if (card.pack === "cc-by") lines.push("", "Adapted from CC BY 4.0 material; attribution is in packs/cc-by/NOTICE.");
+  return { kind: "card", id: card.id, title: card.title, markdown: lines.join("\n"), data: { card } };
 }
 
 /** The first paragraph of the decision's outcome, or of its body. */

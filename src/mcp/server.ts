@@ -2,6 +2,7 @@ import { McpServer, ResourceTemplate } from "@modelcontextprotocol/server";
 import type { CallToolResult, ListResourcesResult, ReadResourceResult } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import {
+  listCards,
   openWorkspace,
   proposeDecision,
   runCheck,
@@ -262,8 +263,14 @@ export function createArchitectServer(options: ServerOptions): McpServer {
         title: `component ${component.id}`,
         mimeType: "text/markdown",
       })),
-    // Knowledge cards land in M4.
-    cards: async () => [],
+    cards: async () =>
+      listCards().map((card) => ({
+        uri: resourceUri("cards", card.id),
+        name: `card:${card.id}`,
+        title: `${card.title} (${card.kind})`,
+        description: card.summary,
+        mimeType: "text/markdown",
+      })),
   };
 
   for (const kind of ["decisions", "rules", "components", "cards"] as const) {

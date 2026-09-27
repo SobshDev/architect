@@ -15,7 +15,7 @@ export {
 export { checkWorkspace, runCheck, type CheckOptions, type CheckOutcome } from "./check.ts";
 export { formatInit, runInit, type InitOptions, type InitResult } from "./init.ts";
 export { inferMap, runGraph, type GraphResult } from "./graph.ts";
-export { explainTarget, runExplain, type Explanation, type ExplainKind } from "./explain.ts";
+export { explainTarget, listCards, runExplain, type CardSummary, type Explanation, type ExplainKind } from "./explain.ts";
 export { formatBaselineUpdate, runBaselineUpdate, type BaselineUpdateResult } from "./baseline.ts";
 export { formatStatus, runStatus, type StatusResult } from "./status.ts";
 export { jsonSchemas, SCHEMA_NAMES, type SchemaName } from "./schema.ts";

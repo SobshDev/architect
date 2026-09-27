@@ -1,4 +1,5 @@
 import { buildContext, type ContextBrief } from "../context/index.ts";
+import { loadCards } from "../knowledge/index.ts";
 import type { Finding, Graph } from "../model/index.ts";
 import { applyBaseline, evaluateRules } from "../rules/index.ts";
 import { UsageError } from "./errors.ts";
@@ -37,6 +38,7 @@ export async function runContext(cwd: string, options: ContextOptions = {}): Pro
     decisions,
     graph,
     findings: openFindings(ws, graph),
+    cards: loadCards(),
     paths,
     task: options.task,
     budget: options.budget,
