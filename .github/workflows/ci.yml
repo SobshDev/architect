@@ -17,3 +17,5 @@ jobs:
           bun-version: 1.3.14
       - run: bun install --frozen-lockfile
       - run: bun run check
+      - name: Performance targets (fails beyond twice the v0.1 targets)
+        run: bun scripts/bench-graph.ts --assert

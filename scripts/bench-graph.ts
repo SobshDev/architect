@@ -1,10 +1,13 @@
-// Benchmarks buildGraph on a synthetic 5,000-file TypeScript repo: cold, warm, and hook mode.
-// Run manually with "bun scripts/bench-graph.ts". Targets: cold <= 30 s, warm (check --changed) <= 2 s, hook p95 <= 500 ms.
+// Benchmarks Architect on a synthetic, committed 5,000-file TypeScript repo against the v0.1 targets:
+// a full check from a cold cache <= 30 s, check --changed with a warm cache <= 2 s, and the PostToolUse hook
+// p95 <= 500 ms. Every command runs as its own process, as an agent or CI runs it, so times include startup.
+// "bun scripts/bench-graph.ts" prints the numbers; "--assert" also exits 1 when one is over twice its target.
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { WorktreeSource, buildGraph } from "../src/analysis/index.ts";
-import { ArchitectureSchema } from "../src/model/index.ts";
+
+const CLI = join(import.meta.dir, "../src/cli/main.ts");
+const TODAY = "2026-09-26";
 
 const COMPONENTS = 20;
 const FILES_PER_COMPONENT = 250;
@@ -85,44 +88,114 @@ async function generate(root: string): Promise<void> {
   if (init.exitCode !== 0) throw new Error("git init failed");
 }
 
+function contract(): Map<string, string> {
+  const ids = Array.from({ length: COMPONENTS }, (_, c) => component(c));
+  const architecture = ["version: 1", "name: bench", "components:", ...ids.flatMap((id) => [`  - id: ${id}`, `    paths: [src/${id}]`])];
+  const rules = [
+    "version: 1",
+    "rules:",
+    "  - id: no-cycles",
+    "    kind: acyclic",
+    '    because: ["0001"]',
+    "  - id: layering",
+    "    kind: layers",
+    `    layers: [${[...ids].reverse().join(", ")}]`,
+    '    because: ["0001"]',
+  ];
+  const decision = ["---", "status: accepted", "date: 2026-09-01", "---", "", "# Components depend only on lower components", ""];
+  return new Map([
+    [".architect/architecture.yaml", `${architecture.join("\n")}\n`],
+    [".architect/rules.yaml", `${rules.join("\n")}\n`],
+    [".architect/decisions/0001-components-depend-downward.md", decision.join("\n")],
+    [".architect/.gitignore", "cache/\n"],
+  ]);
+}
+
+function git(root: string, ...args: string[]): void {
+  const result = Bun.spawnSync(["git", "-c", "user.name=bench", "-c", "user.email=bench@example.com", "-c", "commit.gpgsign=false", ...args], { cwd: root });
+  if (result.exitCode !== 0) throw new Error(`git ${args.join(" ")} failed: ${result.stderr.toString()}`);
+}
+
 function percentile(values: number[], p: number): number {
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[Math.min(sorted.length - 1, Math.ceil((p / 100) * sorted.length) - 1)] ?? 0;
 }
 
+/** Runs the CLI as a separate process and returns its wall time in milliseconds. */
+function run(root: string, args: string[], stdin?: string): { ms: number; exitCode: number; stdout: string } {
+  const started = performance.now();
+  const result = Bun.spawnSync([process.execPath, CLI, ...args], {
+    cwd: root,
+    env: { ...process.env, ARCHITECT_TODAY: TODAY },
+    stdin: stdin === undefined ? "ignore" : Buffer.from(stdin),
+  });
+  const ms = performance.now() - started;
+  const stderr = result.stderr.toString();
+  if (stderr.includes("failed") || result.exitCode === 2) throw new Error(`architect ${args.join(" ")} failed (exit ${result.exitCode}): ${stderr}`);
+  return { ms, exitCode: result.exitCode, stdout: result.stdout.toString() };
+}
+
+function hookPayload(root: string, event: "SessionStart" | "PostToolUse", path?: string): string {
+  const base = { session_id: "bench", transcript_path: join(root, "transcript.jsonl"), cwd: root, hook_event_name: event, model: "bench", permission_mode: "default" };
+  if (event === "SessionStart") return JSON.stringify({ ...base, source: "startup" });
+  const patch = `*** Begin Patch\n*** Update File: ${path}\n@@\n+export const edited = 1;\n*** End Patch\n`;
+  return JSON.stringify({ ...base, turn_id: "t", tool_name: "apply_patch", tool_input: { command: patch }, tool_response: "Success.", tool_use_id: "u" });
+}
+
+interface Measure {
+  name: string;
+  ms: number;
+  target?: number;
+}
+
 async function main(): Promise<void> {
+  const assert = process.argv.includes("--assert");
   const root = await mkdtemp(join(tmpdir(), "architect-bench-"));
+  const measures: Measure[] = [];
   try {
     await generate(root);
-    const architecture = ArchitectureSchema.parse({
-      components: Array.from({ length: COMPONENTS }, (_, c) => ({ id: component(c), paths: [`src/${component(c)}`] })),
-    });
-    const cacheDir = join(root, ".architect", "cache");
-    const source = new WorktreeSource(root);
+    for (const [path, text] of contract()) {
+      await mkdir(dirname(join(root, path)), { recursive: true });
+      await writeFile(join(root, path), text);
+    }
+    git(root, "add", "-A");
+    git(root, "commit", "-q", "-m", "bench");
 
-    const cold = await buildGraph(source, architecture, { cacheDir });
-    console.log(`cold:  ${cold.stats.ms} ms  files=${cold.stats.files} parsed=${cold.stats.parsed} edges=${cold.graph.edges.length} unresolved=${cold.coverage.unresolved_imports.length}`);
+    const cold = run(root, ["check", "--format", "json"]);
+    const report = JSON.parse(cold.stdout) as { coverage: { files_analyzed: number } };
+    measures.push({ name: `check, cold cache (${report.coverage.files_analyzed} files)`, ms: cold.ms, target: 30_000 });
 
-    const warm = await buildGraph(source, architecture, { cacheDir });
-    console.log(`warm:  ${warm.stats.ms} ms  parsed=${warm.stats.parsed} (no changes)`);
-
-    const edited = filePath(3, 7);
-    await writeFile(join(root, edited), `${moduleText(3, 7)}export const touched = 1;\n`);
-    const changed = await buildGraph(new WorktreeSource(root), architecture, { cacheDir });
-    console.log(`warm:  ${changed.stats.ms} ms  parsed=${changed.stats.parsed} (one file edited)`);
+    measures.push({ name: "SessionStart hook", ms: run(root, ["hook", "SessionStart", "--agent", "codex"], hookPayload(root, "SessionStart")).ms });
 
     const times: number[] = [];
     for (let i = 0; i < HOOK_RUNS; i++) {
-      const target = filePath(i % COMPONENTS, (i * 37) % FILES_PER_COMPONENT);
-      await writeFile(join(root, target), `${moduleText(i % COMPONENTS, (i * 37) % FILES_PER_COMPONENT)}export const edit${i} = ${i};\n`);
-      const started = performance.now();
-      await buildGraph(new WorktreeSource(root), architecture, { cacheDir, only: [target] });
-      times.push(performance.now() - started);
+      const c = i % COMPONENTS;
+      const f = (i * 37) % FILES_PER_COMPONENT;
+      const target = filePath(c, f);
+      await writeFile(join(root, target), `${moduleText(c, f)}export const edited = 1;\n`);
+      times.push(run(root, ["hook", "PostToolUse", "--agent", "codex"], hookPayload(root, "PostToolUse", target)).ms);
     }
-    console.log(`hook:  p50=${percentile(times, 50).toFixed(0)} ms  p95=${percentile(times, 95).toFixed(0)} ms  (${HOOK_RUNS} runs, one file each)`);
+    measures.push({ name: `PostToolUse hook p50 (${HOOK_RUNS} edits)`, ms: percentile(times, 50) });
+    measures.push({ name: `PostToolUse hook p95 (${HOOK_RUNS} edits)`, ms: percentile(times, 95), target: 500 });
+
+    const changed = [0, 1, 2].map(() => run(root, ["check", "--changed"]).ms);
+    measures.push({ name: `check --changed, warm cache (${HOOK_RUNS} edited files, median of 3)`, ms: percentile(changed, 50), target: 2_000 });
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+
+  let over = 0;
+  for (const m of measures) {
+    const limit = m.target === undefined ? "" : `  target ${m.target} ms`;
+    const flag = m.target !== undefined && m.ms > 2 * m.target ? "  OVER 2x TARGET" : "";
+    if (flag) over++;
+    console.log(`${m.name.padEnd(62)} ${m.ms.toFixed(0).padStart(6)} ms${limit}${flag}`);
+  }
+  if (assert && over > 0) {
+    console.error(`${over} measurement(s) over twice the target.`);
+    process.exit(1);
   }
 }
 
 await main();
+
