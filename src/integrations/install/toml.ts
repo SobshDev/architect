@@ -35,6 +35,43 @@ export function readTomlTable(existing: string | null, name: string): string | n
   return range === null ? null : lines.slice(range.start, range.end).join("\n");
 }
 
+const KEY_LINE = /^\s*((?:[A-Za-z0-9_-]+|"[^"]*"|'[^']*')(?:\s*\.\s*(?:[A-Za-z0-9_-]+|"[^"]*"|'[^']*'))*)\s*=(.*)$/;
+
+function keyPath(raw: string): string[] {
+  return raw.split(".").map((part) => part.trim().replace(/^"(.*)"$|^'(.*)'$/, "$1$2"));
+}
+
+/**
+ * True when the table called name is defined without its own header: with dotted keys (a.b.key = 1) or an
+ * inline table (a = { b = {...} }). Adding a [a.b] header next to either makes the file invalid TOML.
+ */
+export function definedWithoutHeader(existing: string | null, name: string): boolean {
+  if (existing === null) return false;
+  const target = name.split(".");
+  let table: string[] = [];
+  for (const line of existing.split("\n")) {
+    const header = headerName(line);
+    if (header !== null) {
+      table = header === "" ? [] : header.split(".");
+      continue;
+    }
+    const match = KEY_LINE.exec(line.replace(/\r$/, ""));
+    if (match === null) continue;
+    const full = [...table, ...keyPath(match[1] ?? "")];
+    const shared = Math.min(full.length, target.length);
+    if (full.slice(0, shared).join(".") !== target.slice(0, shared).join(".")) continue;
+    // A key under the table's own header, or one of its sub-tables, is the normal form.
+    if (table.length >= target.length) continue;
+    if (full.length > target.length) return true;
+    // The key names the table or one of its parents: only an inline table can hold it.
+    const rest = target.slice(full.length);
+    const value = match[2] ?? "";
+    if (full.length === target.length && value.trimStart().startsWith("{")) return true;
+    if (rest.length > 0 && new RegExp(`[{,]\\s*["']?${rest[0]!.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["']?\\s*[.=]`).test(value)) return true;
+  }
+  return false;
+}
+
 /** Replaces the table called name with table (a header plus its keys), or appends it after a blank line. */
 export function upsertTomlTable(existing: string | null, name: string, table: string): string {
   const body = table.replace(/\n+$/, "");

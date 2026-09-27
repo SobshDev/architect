@@ -114,6 +114,47 @@ describe("install", () => {
     await expect(runInstall(dir, { agent: "claude", command: COMMAND, today: TODAY })).rejects.toThrow(".claude/settings.json");
     expect(read(dir, ".claude/settings.json")).toBe("{ not json");
   });
+
+  test("refuses to add a second architect server to a Codex config that defines it with dotted keys or an inline table", async () => {
+    for (const config of [
+      'mcp_servers.architect.command = "architect"\n',
+      'mcp_servers = { architect = { command = "architect" } }\n',
+      '[mcp_servers]\narchitect = { command = "architect" }\n',
+      '[mcp_servers]\narchitect.command = "architect"\n',
+    ]) {
+      const dir = shop();
+      write(dir, ".codex/config.toml", config);
+      await expect(runInstall(dir, { agent: "codex", command: COMMAND, today: TODAY })).rejects.toThrow("dotted keys or an inline table");
+      expect(read(dir, ".codex/config.toml")).toBe(config);
+    }
+    const dir = shop();
+    const ok = '[mcp_servers.other]\ncommand = "o"\n\n[mcp_servers.architect.env]\nA = "1"\n';
+    write(dir, ".codex/config.toml", ok);
+    await runInstall(dir, { agent: "codex", command: COMMAND, today: TODAY });
+    expect(read(dir, ".codex/config.toml")).toContain('[mcp_servers.architect.env]\nA = "1"');
+  });
+
+  test("a custom command without 'architect' in it is still recognized, so reinstalling and syncing never duplicate hooks", async () => {
+    const dir = shop();
+    await runInstall(dir, { agent: "codex", command: "bun /opt/tools/arch.ts", today: TODAY });
+    await runInstall(dir, { agent: "codex", today: TODAY });
+    await runSync(dir, { today: TODAY });
+    const hooks = json(dir, ".codex/hooks.json").hooks;
+    for (const event of ["SessionStart", "UserPromptSubmit", "PostToolUse", "Stop"]) {
+      expect(hooks[event].flatMap((group: any) => group.hooks.map((hook: any) => hook.command))).toEqual([`bun /opt/tools/arch.ts hook ${event} --agent codex`]);
+    }
+  });
+
+  test("a quoted command path with spaces stays one word in MCP entries and survives sync", async () => {
+    const dir = shop();
+    const command = "'/opt/My Tools/architect'";
+    await runInstall(dir, { agent: "claude", command, today: TODAY });
+    expect(json(dir, ".mcp.json").mcpServers.architect).toEqual({ command: "/opt/My Tools/architect", args: ["mcp"] });
+    await runInstall(dir, { agent: "cursor", today: TODAY });
+    expect(json(dir, ".cursor/mcp.json").mcpServers.architect).toEqual({ command: "/opt/My Tools/architect", args: ["mcp"] });
+    expect(json(dir, ".claude/settings.json").hooks.Stop[0].hooks[0].command).toBe(`${command} hook Stop --agent claude`);
+    expect(await drift(dir)).toEqual([]);
+  });
 });
 
 describe("sync and drift", () => {
@@ -144,6 +185,22 @@ describe("sync and drift", () => {
     expect(findings.map((f) => [f.rule, f.level, f.message])).toEqual([
       ["generated-drift", "warn", ".cursor/rules/architect.mdc is out of date. Run architect sync."],
     ]);
+  });
+
+  test("the rules file of a removed component is drift, and sync deletes it but keeps hand-written ones", async () => {
+    const dir = shop();
+    const architecture = read(dir, ".architect/architecture.yaml");
+    write(dir, ".architect/architecture.yaml", `${architecture.trimEnd()}\n  - id: api\n    paths: [src/api]\n`);
+    await runInstall(dir, { agent: "claude", command: COMMAND, today: TODAY });
+    write(dir, ".claude/rules/architect-notes.md", "# My own notes\n");
+    write(dir, ".architect/architecture.yaml", architecture);
+
+    expect(await drift(dir)).toEqual([".claude/rules/architect-api.md"]);
+    const synced = await runSync(dir, { today: TODAY });
+    expect(synced.removed).toEqual([".claude/rules/architect-api.md"]);
+    expect(existsSync(join(dir, ".claude/rules/architect-api.md"))).toBe(false);
+    expect(read(dir, ".claude/rules/architect-notes.md")).toBe("# My own notes\n");
+    expect(await drift(dir)).toEqual([]);
   });
 
   test("sync keeps the command recorded at install time", async () => {

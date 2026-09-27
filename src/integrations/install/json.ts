@@ -25,15 +25,20 @@ export function jsonText(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
 
-/** True for hook commands Architect generated: "<command> hook <Event> --agent <agent>". */
+/**
+ * Generated hook commands have the shape "<command> hook <Event> --agent <agent>". Ownership goes by that shape,
+ * so a custom --command without "architect" in it is still recognized and replaced instead of duplicated.
+ */
+const HOOK_COMMAND = /^(.*\S)\s+hook\s+[A-Za-z]+\s+--agent\s+[a-z]+\s*$/;
+
+/** True for hook commands Architect generated. */
 export function isArchitectHookCommand(command: unknown): command is string {
-  return typeof command === "string" && command.includes("architect") && command.includes(" hook ") && command.includes("--agent");
+  return typeof command === "string" && HOOK_COMMAND.test(command);
 }
 
 /** The command prefix of a generated hook command, such as "bunx architect". */
 export function hookCommandPrefix(command: string): string | null {
-  const match = /^(.*\S)\s+hook\s+\S+\s+--agent\s+\S+\s*$/.exec(command);
-  return match?.[1] ?? null;
+  return HOOK_COMMAND.exec(command)?.[1] ?? null;
 }
 
 export interface HookSpec {

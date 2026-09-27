@@ -8,6 +8,7 @@ export {
   type InstallPlan,
   installedAgents,
   installedCommand,
+  type ListDir,
   planInstall,
   type ReadFile,
 } from "./plan.ts";

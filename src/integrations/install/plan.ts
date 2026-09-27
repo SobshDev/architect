@@ -1,7 +1,7 @@
 import { type Architecture, compareText, type Decision, type RulesFile } from "../../model/index.ts";
 import { HOOK_EVENTS, hookMatchers } from "../hooks/index.ts";
 import { upsertManagedBlock } from "./block.ts";
-import { agentsBlock, claudeComponentRules, claudeMainRules, cursorRule, type ContractView } from "./content.ts";
+import { agentsBlock, claudeComponentRules, claudeMainRules, cursorRule, GENERATED_MARK, type ContractView } from "./content.ts";
 import { InstallError } from "./errors.ts";
 import {
   architectHookCommands,
@@ -15,7 +15,7 @@ import {
   SERVER_NAME,
 } from "./json.ts";
 import { SKILL_FILES } from "./skill.ts";
-import { readTomlTable, tomlString, upsertTomlTable } from "./toml.ts";
+import { definedWithoutHeader, readTomlTable, tomlString, upsertTomlTable } from "./toml.ts";
 
 export type InstallAgent = "codex" | "claude" | "cursor";
 export const INSTALL_AGENTS: readonly InstallAgent[] = ["codex", "claude", "cursor"];
@@ -30,6 +30,8 @@ export interface InstallPlan {
   agent: InstallAgent;
   /** Sorted by path. */
   files: GeneratedFile[];
+  /** Generated files that no longer belong, such as the rules of a removed component. Sorted. */
+  remove: string[];
   notes: string[];
 }
 
@@ -42,6 +44,8 @@ export interface InstallInput {
 }
 
 export type ReadFile = (path: string) => string | null;
+/** File names in a repo directory; empty when it does not exist. */
+export type ListDir = (dir: string) => string[];
 
 export const PATHS = {
   agents: "AGENTS.md",
@@ -51,6 +55,7 @@ export const PATHS = {
   claudeSettings: ".claude/settings.json",
   claudeMcp: ".mcp.json",
   claudeRules: ".claude/rules/architect.md",
+  claudeRulesDir: ".claude/rules",
   claudeSkill: ".claude/skills/architect",
   cursorRule: ".cursor/rules/architect.mdc",
   cursorMcp: ".cursor/mcp.json",
@@ -67,8 +72,51 @@ function hookSpecs(agent: "codex" | "claude", command: string): HookSpec[] {
   });
 }
 
+/**
+ * Splits a command the way a POSIX shell would for plain words and quotes, since hooks run it through a shell:
+ * "'/opt/My Tools/architect'" is one word. Unquoted spaces separate words.
+ */
+export function shellWords(command: string): string[] {
+  const words: string[] = [];
+  let word = "";
+  let started = false;
+  let quote: "'" | '"' | null = null;
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i]!;
+    const next = command[i + 1];
+    if (quote === "'") {
+      if (ch === "'") quote = null;
+      else word += ch;
+    } else if (quote === '"') {
+      if (ch === '"') quote = null;
+      else if (ch === "\\" && next !== undefined && '"\\$`'.includes(next)) {
+        word += next;
+        i++;
+      } else word += ch;
+    } else if (/\s/.test(ch)) {
+      if (started) words.push(word);
+      word = "";
+      started = false;
+    } else {
+      started = true;
+      if (ch === "'" || ch === '"') quote = ch;
+      else if (ch === "\\" && next !== undefined) {
+        word += next;
+        i++;
+      } else word += ch;
+    }
+  }
+  if (started) words.push(word);
+  return words;
+}
+
+/** A word the shell reads back unchanged. */
+export function shellQuote(word: string): string {
+  return /^[A-Za-z0-9_@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`;
+}
+
 function serverSpec(command: string): { command: string; args: string[] } {
-  const [program = "architect", ...args] = command.trim().split(/\s+/);
+  const [program = "architect", ...args] = shellWords(command.trim());
   return { command: program, args: [...args, "mcp"] };
 }
 
@@ -99,15 +147,23 @@ function skillFiles(dir: string): GeneratedFile[] {
 }
 
 /** The files install writes for one agent, merged with the current content that read returns. */
-export function planInstall(agent: InstallAgent, input: InstallInput, read: ReadFile): InstallPlan {
+export function planInstall(agent: InstallAgent, input: InstallInput, read: ReadFile, list: ListDir = () => []): InstallPlan {
   const { command } = input;
   const view: ContractView = input;
   const files: GeneratedFile[] = [{ path: PATHS.agents, content: withPath(PATHS.agents, () => upsertManagedBlock(read(PATHS.agents), agentsBlock(command))) }];
+  const remove: string[] = [];
   const notes: string[] = [];
   switch (agent) {
-    case "codex":
+    case "codex": {
       files.push(hooksFile(PATHS.codexHooks, "codex", command, read));
-      files.push({ path: PATHS.codexConfig, content: upsertTomlTable(read(PATHS.codexConfig), TOML_TABLE, codexTable(command)) });
+      const config = read(PATHS.codexConfig);
+      if (definedWithoutHeader(config, TOML_TABLE)) {
+        throw new InstallError(
+          PATHS.codexConfig,
+          `${PATHS.codexConfig} defines ${TOML_TABLE} with dotted keys or an inline table. Move it into a [${TOML_TABLE}] table or delete it, then run install again.`,
+        );
+      }
+      files.push({ path: PATHS.codexConfig, content: upsertTomlTable(config, TOML_TABLE, codexTable(command)) });
       files.push(...skillFiles(PATHS.codexSkill));
       notes.push(
         [
@@ -120,16 +176,25 @@ export function planInstall(agent: InstallAgent, input: InstallInput, read: Read
         "Codex asks you to review and trust the new hooks the next time it starts in this project.",
       );
       break;
-    case "claude":
+    }
+    case "claude": {
       files.push(hooksFile(PATHS.claudeSettings, "claude", command, read));
       files.push(mcpFile(PATHS.claudeMcp, command, read));
       files.push({ path: PATHS.claudeRules, content: claudeMainRules(command) });
       for (const component of input.architecture.components) {
         files.push({ path: `.claude/rules/architect-${component.id}.md`, content: claudeComponentRules(component, view, command) });
       }
+      const current = new Set(files.map((file) => file.path));
+      for (const name of list(PATHS.claudeRulesDir)) {
+        const path = `${PATHS.claudeRulesDir}/${name}`;
+        if (!/^architect-.+\.md$/.test(name) || current.has(path)) continue;
+        // Only files Architect wrote: a hand-written architect-*.md stays.
+        if (read(path)?.includes(GENERATED_MARK)) remove.push(path);
+      }
       files.push(...skillFiles(PATHS.claudeSkill));
       notes.push(`Claude Code asks you to approve the project MCP server in ${PATHS.claudeMcp} the first time it starts in this project.`);
       break;
+    }
     case "cursor":
       files.push({ path: PATHS.cursorRule, content: cursorRule(view, command) });
       files.push(mcpFile(PATHS.cursorMcp, command, read));
@@ -138,7 +203,8 @@ export function planInstall(agent: InstallAgent, input: InstallInput, read: Read
   }
   notes.push(CODEOWNERS_NOTE);
   files.sort((a, b) => compareText(a.path, b.path));
-  return { agent, files, notes };
+  remove.sort(compareText);
+  return { agent, files, remove, notes };
 }
 
 /** Parses JSON for detection; unreadable files count as absent. */
@@ -166,7 +232,7 @@ export function installedAgents(read: ReadFile): InstallAgent[] {
 function fromServer(server: { command: string; args: string[] } | null): string | null {
   if (server === null) return null;
   const args = server.args.at(-1) === "mcp" ? server.args.slice(0, -1) : server.args;
-  return [server.command, ...args].join(" ");
+  return [server.command, ...args].map(shellQuote).join(" ");
 }
 
 function fromToml(text: string | null): string | null {
