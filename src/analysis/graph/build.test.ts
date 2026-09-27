@@ -211,11 +211,14 @@ test("coverage lists languages, unmapped files, unresolved and dynamic imports, 
   expect(graph.files.map((f) => f.path)).toEqual(["scripts/tool.toy", "src/app/main.toy", "src/app/page.toy", "src/lib/old.toy", "src/lib/util.toy"]);
   expect(coverage).toEqual({
     files_analyzed: 5,
+    source_files: 5,
     languages: { typescript: 5 },
+    not_analyzed: {},
     unmapped_files: ["scripts/tool.toy"],
     unresolved_imports: [{ file: "src/app/main.toy", line: 2, specifier: "./missing" }],
     dynamic_imports: [{ file: "scripts/tool.toy", line: 1, expression: "someVar" }],
     parse_errors: [{ file: "scripts/tool.toy", message: "unexpected token on line 2" }],
+    inert_rules: [],
   });
   expect(graph.edges.filter((e) => e.from === "src/app/main.toy")).toEqual([
     { from: "src/app/main.toy", to: "src/lib/util.toy", specifier: "../lib/util", kind: "static", line: 1, analyzer: "typescript" },

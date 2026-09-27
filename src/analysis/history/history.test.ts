@@ -155,16 +155,37 @@ describe("summarizeHistory", () => {
     expect(summarizeHistory(commits, input(architecture)).componentPairs).toEqual([{ a: "a", b: "b", support: 3, confidence: 1 }]);
   });
 
-  test("ignores files outside the graph and ranks hotspots by churn times size", () => {
-    const commits: CommitRecord[] = [
-      { sha: "1", files: [{ path: "gone.ts", added: 500, deleted: 0 }, { path: "a/1.ts", added: 3, deleted: 2 }] },
-      { sha: "2", files: [{ path: "b/1.ts", added: 5, deleted: 0 }, { path: "c/1.ts", added: 0, deleted: 9 }] },
+  test("hotspots are large, often-changed production files relative to the rest of the repository", () => {
+    const sized = [
+      { path: "core/big.rs", loc: 400 },
+      { path: "core/busy.rs", loc: 400 },
+      { path: "core/small.rs", loc: 20 },
+      { path: "Tests/Fixtures/rfb.py", loc: 900 },
+      { path: "scripts/smoke.sh.ts", loc: 900 },
+      ...Array.from({ length: 5 }, (_, i) => ({ path: `core/quiet${i}.rs`, loc: 100 })),
     ];
-    const summary = summarizeHistory(commits, input());
-    expect(summary.hotspots.map((h) => [h.path, h.score])).toEqual([
-      ["c/1.ts", 90],
-      ["a/1.ts", 50],
-      ["b/1.ts", 50],
+    const touch = (path: string, lines: number): CommitRecord => ({ sha: path, files: [{ path, added: lines, deleted: 0 }] });
+    const commits = [
+      ...Array.from({ length: 4 }, () => touch("core/big.rs", 30)),
+      ...Array.from({ length: 2 }, () => touch("core/busy.rs", 200)),
+      ...Array.from({ length: 6 }, () => touch("core/small.rs", 50)),
+      ...Array.from({ length: 6 }, () => touch("Tests/Fixtures/rfb.py", 50)),
+      ...Array.from({ length: 6 }, () => touch("scripts/smoke.sh.ts", 50)),
+      ...Array.from({ length: 5 }, (_, i) => touch(`core/quiet${i}.rs`, 5)),
+      touch("gone.rs", 500),
+    ];
+    const summary = summarizeHistory(commits, { ...input(), files: sized });
+    // busy.rs changed in only two commits, small.rs is below the median size, and tests, fixtures, and scripts never count.
+    expect(summary.hotspots.map((h) => [h.path, h.commits, h.score])).toEqual([["core/big.rs", 4, 48000]]);
+  });
+
+  test("counts files in languages the graph does not parse", () => {
+    const architecture = arch([
+      { id: "chats", paths: ["api/modules/chats"] },
+      { id: "proxy", paths: ["api/modules/proxy"] },
     ]);
+    const rust = ["api/modules/chats/lib.rs", "api/modules/proxy/lib.rs"].map((path) => ({ path, loc: 50 }));
+    const commits = Array.from({ length: 3 }, () => commit("api/modules/chats/lib.rs", "api/modules/proxy/lib.rs"));
+    expect(summarizeHistory(commits, { ...input(architecture), files: rust }).componentPairs).toEqual([{ a: "chats", b: "proxy", support: 3, confidence: 1 }]);
   });
 });

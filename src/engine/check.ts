@@ -1,7 +1,7 @@
 import { readHistory } from "../analysis/index.ts";
 import type { Report, Rule } from "../model/index.ts";
 import { createReport } from "../report/index.ts";
-import { applyBaseline, decisionFindings, evaluateRules, historyFindings, metricFindings } from "../rules/index.ts";
+import { applyBaseline, decisionFindings, evaluateRules, historyFindings, inertRules, metricFindings } from "../rules/index.ts";
 import { driftFindings } from "./install.ts";
 import { analyze, changedSince, contractIssues, hasConfigErrors, openWorkspace, repoPaths, type Workspace } from "./workspace.ts";
 
@@ -44,8 +44,11 @@ export async function checkWorkspace(ws: Workspace, options: CheckOptions = {}):
     }
   }
 
-  const { graph, coverage } = await analyze(ws);
+  const analyzed = await analyze(ws);
+  const { graph } = analyzed;
   const { architecture, rules, decisions, baseline } = ws.contract;
+  const coverage = { ...analyzed.coverage, inert_rules: inertRules(graph, architecture, rules) };
+  const partial = coverage.source_files > coverage.files_analyzed;
   const evaluated = evaluateRules({ graph, architecture, rules, today: ws.today, files });
   // Informational findings describe the whole repository, so only a full check computes them.
   const history = scope === "all" ? await readHistory(ws.root, graph, architecture, { cacheDir: ws.cacheDir }) : null;
@@ -53,8 +56,8 @@ export async function checkWorkspace(ws: Workspace, options: CheckOptions = {}):
     scope === "all"
       ? [
           ...decisionFindings({ graph, architecture, rules, decisions, today: ws.today }),
-          ...metricFindings(graph, architecture),
-          ...(history ? historyFindings(history, graph, architecture) : []),
+          ...metricFindings(graph, architecture, coverage),
+          ...(history ? historyFindings(history, graph, architecture, { partial }) : []),
         ]
       : [];
   const { findings, fixed } = applyBaseline([...evaluated, ...informational], baseline, { files });

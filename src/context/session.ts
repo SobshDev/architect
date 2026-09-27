@@ -1,8 +1,8 @@
 // The overview an agent gets at session start.
 import { describeRule } from "./rules.ts";
-import { assemble, BRIEF_HEADER, code, codeList, makeItem, quoteLine, uriFor } from "./text.ts";
+import { assemble, code, codeList, headerWith, makeItem, quoteLine, uriFor } from "./text.ts";
 import type { ContextBrief, ContextInput, ContextItem } from "./types.ts";
-import { compareText } from "../model/index.ts";
+import { compareText, coveragePercent, isLowCoverage, notAnalyzedText } from "../model/index.ts";
 
 const SESSION_CAP = 600;
 
@@ -37,5 +37,12 @@ export function sessionBrief(input: ContextInput): ContextBrief {
     footer.push(`${count} frozen in the baseline. Do not add new ones.`);
   }
   footer.push("Before editing, call `architect context --paths <files>` (CLI) or `architect_context` (MCP) with the paths you will edit.");
-  return assemble(BRIEF_HEADER, items, footer, budget, []);
+  const c = input.coverage;
+  const warnings =
+    c !== undefined && isLowCoverage(c)
+      ? [
+          `Architect analyzes ${c.files_analyzed} of ${c.source_files} source files (${coveragePercent(c)}); not analyzed: ${notAnalyzedText(c)}. Rules are checked only on analyzed files; for the rest, follow the decisions and component contracts by reading them.`,
+        ]
+      : [];
+  return assemble(headerWith(warnings), items, footer, budget, []);
 }

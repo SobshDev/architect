@@ -2,8 +2,9 @@
 import type { Settings } from "./schema.ts";
 import type { FileSource } from "./source.ts";
 
-export type Language = "typescript" | "javascript" | "python";
-export type AnalyzerId = "typescript" | "python";
+/** File-level languages, plus "cargo" for Cargo.toml manifests, whose imports are crate dependencies. */
+export type Language = "typescript" | "javascript" | "python" | "cargo";
+export type AnalyzerId = "typescript" | "python" | "cargo";
 /** static: value import. type: type-only import. dynamic: import() or importlib. require: CommonJS require.
  *  reexport: export ... from. side-effect: import "x" with no bindings. */
 export type EdgeKind = "static" | "type" | "dynamic" | "require" | "reexport" | "side-effect";
@@ -107,6 +108,8 @@ export interface LanguageAnalyzer {
   readonly version: string;
   /** Lowercase file extensions with the dot, such as ".ts". */
   readonly extensions: readonly string[];
+  /** Lowercase file names the analyzer reads whatever their extension, such as "cargo.toml". */
+  readonly fileNames?: readonly string[];
   /** Async setup (such as loading a parser's wasm) run once before the first analyze call. Must be idempotent. */
   prepare?(): Promise<void>;
   analyze(path: string, text: string, contentId: string): FileFacts;
@@ -152,6 +155,8 @@ export interface Hotspot {
   path: string;
   /** Lines added plus deleted in the window. */
   churn: number;
+  /** Commits in the window that changed the file. */
+  commits: number;
   loc: number;
   score: number;
 }

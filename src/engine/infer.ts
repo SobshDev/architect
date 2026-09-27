@@ -1,11 +1,38 @@
-// Infers a first architecture map from the repository layout and the current imports.
+// Infers a first architecture map from the repository layout and the current imports. The layout counts every
+// source file, in any language, so folders of Rust or Swift shape the map even where no analyzer reads them.
 import { basename } from "node:path";
-import { globMatcher, type CoChangePair, type Component, type ComponentGraph, type WorkspacePackage } from "../model/index.ts";
+import { globMatcher, type CoChangePair, type Component, type ComponentGraph } from "../model/index.ts";
 import { findCycles } from "../rules/index.ts";
 import { compareText } from "../model/index.ts";
 
-/** Test and fixture code that the first map leaves out. */
-const TEST_GLOBS = ["**/*.test.*", "**/*.spec.*", "**/__tests__/**", "**/__mocks__/**", "**/test/**", "**/tests/**", "**/e2e/**", "**/fixtures/**"];
+/** Test and fixture code that the first map leaves out, including Swift's Tests/ and Fixtures/ folders. */
+const TEST_GLOBS = [
+  "**/*.test.*",
+  "**/*.spec.*",
+  "**/__tests__/**",
+  "**/__mocks__/**",
+  "**/test/**",
+  "**/tests/**",
+  "**/Tests/**",
+  "**/e2e/**",
+  "**/fixtures/**",
+  "**/Fixtures/**",
+];
+
+/**
+ * Folder names that hold one unit per child: api/modules/chats, Sources/ChatCore, crates/store. Each child with
+ * code becomes a component of its own.
+ */
+const CONTAINERS = new Set(["apps", "components", "crates", "domains", "features", "libs", "modules", "packages", "plugins", "services", "sources", "targets"]);
+
+/** A package the layout declares: a workspace package (package.json, pnpm) or a crate (Cargo.toml). */
+export interface DeclaredPackage {
+  name: string;
+  /** Repo-relative directory without a trailing slash. */
+  dir: string;
+  /** True for JavaScript workspace packages, which components can name through their package field. */
+  workspace?: boolean;
+}
 
 export interface InferredMap {
   components: Component[];
@@ -14,10 +41,12 @@ export interface InferredMap {
 }
 
 /**
- * One component per workspace package, then one per folder of the main source root (the folder that holds
- * most of the code), then one per other top-level folder. Order matters: a file belongs to the first match.
+ * One component per declared package (workspace package or crate), then one per folder of the main source root
+ * (the folder that holds most of the code), then one per other top-level folder. A folder that only wraps a single
+ * subfolder is skipped over, and a container folder (modules, packages, Sources, ...) yields one component per
+ * child. Order matters: a file belongs to the first match, so nested components come before their parents.
  */
-export function inferComponents(files: readonly string[], workspaces: readonly WorkspacePackage[]): InferredMap {
+export function inferComponents(files: readonly string[], workspaces: readonly DeclaredPackage[]): InferredMap {
   const exclude = TEST_GLOBS.filter((glob) => files.some(globMatcher([glob])));
   const isTest = globMatcher(exclude);
   const source = files.filter((file) => !isTest(file));
@@ -36,32 +65,82 @@ export function inferComponents(files: readonly string[], workspaces: readonly W
     else loose.push(file);
   }
   const ordered = packages.filter((w) => used.has(w.dir)).sort((a, b) => compareNested(a.dir, b.dir));
-  for (const w of ordered) add(w.name.replace(/^@[^/]+\//, ""), [w.dir], { package: w.name });
+  for (const w of ordered) add(w.name.replace(/^@[^/]+\//, ""), [w.dir], w.workspace ? { package: w.name } : {});
 
   if (loose.length > 0) {
     const root = sourceRoot(loose);
     const prefix = root === "" ? "" : `${root}/`;
-    const folders = new Set<string>();
+    const folders: { name: string; path: string }[] = [];
+    const tops = new Set<string>();
     let direct = 0;
     for (const file of loose) {
       if (!file.startsWith(prefix)) continue;
       const rest = file.slice(prefix.length);
       const slash = rest.indexOf("/");
       if (slash === -1) direct++;
-      else folders.add(rest.slice(0, slash));
+      else tops.add(rest.slice(0, slash));
     }
-    for (const folder of [...folders].sort()) add(folder, [`${prefix}${folder}`]);
-    if (root !== "" && direct > 0) add(basename(root), [root]);
+    for (const folder of [...tops].sort()) folders.push(...unitsOf(`${prefix}${folder}`, loose));
+    if (root !== "" && direct > 0) folders.push({ name: basename(root), path: root });
     if (root !== "") {
       const others = new Set<string>();
       for (const file of loose) {
         if (file.startsWith(prefix) || !file.includes("/")) continue;
         others.add(file.slice(0, file.indexOf("/")));
       }
-      for (const folder of [...others].sort()) add(folder, [folder]);
+      for (const folder of [...others].sort()) folders.push(...unitsOf(folder, loose));
     }
+    const order = new Map(folders.map((f, i) => [f.path, i]));
+    folders.sort((a, b) => (a.path.startsWith(`${b.path}/`) ? -1 : b.path.startsWith(`${a.path}/`) ? 1 : (order.get(a.path) ?? 0) - (order.get(b.path) ?? 0)));
+    for (const folder of folders) add(folder.name, [folder.path]);
   }
   return { components, exclude };
+}
+
+/** Immediate subfolders of dir that hold files, and whether dir holds files directly. */
+function childrenOf(dir: string, files: readonly string[]): { folders: string[]; direct: boolean } {
+  const prefix = `${dir}/`;
+  const folders = new Set<string>();
+  let direct = false;
+  for (const file of files) {
+    if (!file.startsWith(prefix)) continue;
+    const rest = file.slice(prefix.length);
+    const slash = rest.indexOf("/");
+    if (slash === -1) direct = true;
+    else folders.add(rest.slice(0, slash));
+  }
+  return { folders: [...folders].sort(compareText), direct };
+}
+
+/**
+ * The components one top folder contributes. A folder that only wraps one subfolder is skipped over; container
+ * folders found within three levels split into one component per child, listed before the folder that holds them.
+ */
+function unitsOf(folder: string, files: readonly string[]): { name: string; path: string }[] {
+  let dir = folder;
+  for (let depth = 0; depth < 4; depth++) {
+    const { folders, direct } = childrenOf(dir, files);
+    if (direct || folders.length !== 1) break;
+    dir = `${dir}/${folders[0]}`;
+  }
+  const units: { name: string; path: string }[] = [];
+  const visit = (path: string, depth: number) => {
+    const { folders } = childrenOf(path, files);
+    if (depth > 0 && CONTAINERS.has(basename(path).toLowerCase()) && folders.length >= 2) {
+      for (const child of folders) units.push({ name: child, path: `${path}/${child}` });
+      return;
+    }
+    if (depth < 3) for (const child of folders) visit(`${path}/${child}`, depth + 1);
+  };
+  if (CONTAINERS.has(basename(dir).toLowerCase()) && childrenOf(dir, files).folders.length >= 2) {
+    const { folders, direct } = childrenOf(dir, files);
+    for (const child of folders) units.push({ name: child, path: `${dir}/${child}` });
+    if (direct) units.push({ name: basename(folder), path: dir });
+    return units;
+  }
+  visit(dir, 0);
+  units.push({ name: basename(folder), path: dir });
+  return units;
 }
 
 /** Sorts alphabetically, except that a folder always comes before the folders that contain it. */

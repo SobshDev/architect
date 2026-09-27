@@ -1,4 +1,4 @@
-import type { ApiChange, ConfigIssue, Finding, Report, Weakening } from "../model/index.ts";
+import { type ApiChange, type ConfigIssue, coveragePercent, type Finding, notAnalyzedText, type Report, type Weakening } from "../model/index.ts";
 import { plural, sortWeakenings } from "./report.ts";
 
 // Plain text for terminals and hook messages: compact, no colors.
@@ -55,7 +55,12 @@ export function summaryLine(report: Report): string {
   const approved = s.weakenings - s.unapproved_weakenings;
   if (approved > 0) parts.push(plural(approved, "approved weakening"));
   if (report.api_changes.length > 0) parts.push(plural(report.api_changes.length, "API change"));
-  if (s.errors === 0 && configErrors === 0) return ["No new errors.", parts.join(", ")].filter(Boolean).join(" ");
+  if (s.errors === 0 && configErrors === 0) {
+    const c = report.coverage;
+    // A clean result covers only what was read; say how much that was.
+    const clean = c.source_files > c.files_analyzed ? `No new errors in the ${coveragePercent(c)} of source files analyzed.` : "No new errors.";
+    return [clean, parts.join(", ")].filter(Boolean).join(" ");
+  }
   return parts.join(", ");
 }
 
@@ -66,9 +71,16 @@ export function coverageLine(report: Report): string | null {
   if (c.unresolved_imports.length > 0) parts.push(plural(c.unresolved_imports.length, "unresolved import"));
   if (c.dynamic_imports.length > 0) parts.push(plural(c.dynamic_imports.length, "dynamic import"));
   if (c.parse_errors.length > 0) parts.push(plural(c.parse_errors.length, "parse error"));
-  if (c.files_analyzed === 0 && parts.length === 0) return null;
-  const analyzed = `Analyzed ${plural(c.files_analyzed, "file")}`;
-  return parts.length > 0 ? `${analyzed}; ${parts.join(", ")}` : `${analyzed}.`;
+  const lines: string[] = [];
+  if (c.files_analyzed > 0 || parts.length > 0 || c.source_files > 0) {
+    const partial = c.source_files > c.files_analyzed;
+    const analyzed = partial
+      ? `Analyzed ${c.files_analyzed} of ${plural(c.source_files, "source file")} (${coveragePercent(c)}); not analyzed: ${notAnalyzedText(c)}`
+      : `Analyzed ${plural(c.files_analyzed, "file")}`;
+    lines.push(parts.length > 0 ? `${analyzed}; ${parts.join(", ")}.` : `${analyzed}.`);
+  }
+  for (const inert of c.inert_rules) lines.push(`Rule ${inert.rule} cannot fire: ${inert.reason}.`);
+  return lines.length > 0 ? lines.join("\n") : null;
 }
 
 export function formatText(report: Report, options: { verbose?: boolean } = {}): string {

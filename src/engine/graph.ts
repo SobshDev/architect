@@ -1,4 +1,5 @@
-import { buildGraph, DEFAULT_ANALYZERS, discoverWorkspaces, selectFiles } from "../analysis/index.ts";
+import { posix } from "node:path";
+import { analyzerKeys, buildGraph, DEFAULT_ANALYZERS, discoverWorkspaces, repoCrates, selectSourceFiles } from "../analysis/index.ts";
 import { ArchitectureSchema, ComponentIndex, SettingsSchema, type Architecture, type ComponentGraph, type Coverage, type FileSource } from "../model/index.ts";
 import { componentGraph, findCycles } from "../rules/index.ts";
 import { inferComponents, type InferredMap } from "./infer.ts";
@@ -12,12 +13,22 @@ export interface GraphResult {
   inferred: boolean;
 }
 
-/** Infers components from the layout of the files in source. Used by init, and by graph before init. */
+/**
+ * Infers components from the layout of the source files in source, in every language, with workspace packages
+ * and crates as components of their own. Used by init, and by graph before init.
+ */
 export async function inferMap(source: FileSource): Promise<InferredMap & { files: string[] }> {
   const files = await source.listFiles();
+  const settings = SettingsSchema.parse({});
   const workspaces = await discoverWorkspaces(source, files);
-  const extensions = DEFAULT_ANALYZERS.flatMap((analyzer) => analyzer.extensions);
-  return { ...inferComponents(selectFiles(files, SettingsSchema.parse({}), extensions), workspaces), files };
+  const crates = await repoCrates({ source, files, settings });
+  const dirs = new Set(workspaces.map((w) => w.dir));
+  const packages = [
+    ...workspaces.map((w) => ({ ...w, workspace: true })),
+    ...[...crates].map(([name, manifest]) => ({ name, dir: posix.dirname(manifest) })).filter((c) => c.dir !== "." && !dirs.has(c.dir)),
+  ];
+  const sourceFiles = selectSourceFiles(files, settings, analyzerKeys(DEFAULT_ANALYZERS));
+  return { ...inferComponents(sourceFiles, packages), files };
 }
 
 export async function runGraph(cwd: string, options: { includeTypeImports?: boolean; today?: string } = {}): Promise<GraphResult> {

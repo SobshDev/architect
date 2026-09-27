@@ -1,4 +1,4 @@
-import type { Architecture, Card, Decision, Finding, Graph, HistorySummary, RulesFile } from "../model/index.ts";
+import type { Architecture, Card, Coverage, Decision, Finding, Graph, HistorySummary, RulesFile } from "../model/index.ts";
 
 export interface ContextInput {
   architecture: Architecture;
@@ -14,6 +14,10 @@ export interface ContextInput {
   cards?: readonly Card[];
   /** Repo-relative paths the task touches. */
   paths?: readonly string[];
+  /** Touched paths that no analyzer reads: the brief warns that nothing is checked on them. */
+  unanalyzed?: readonly string[];
+  /** Repository coverage; the session brief warns when most source files are not analyzed. */
+  coverage?: Pick<Coverage, "files_analyzed" | "source_files" | "not_analyzed">;
   /** Free text describing the task. */
   task?: string;
   /** Tokens, estimated as Math.ceil(characters / 4). Default 1500 (6000 when detail is "full"). */

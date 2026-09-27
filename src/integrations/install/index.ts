@@ -1,4 +1,4 @@
-export { upsertManagedBlock } from "./block.ts";
+export { BLOCK_BEGIN, BLOCK_END, upsertManagedBlock } from "./block.ts";
 export { InstallError } from "./errors.ts";
 export {
   type GeneratedFile,

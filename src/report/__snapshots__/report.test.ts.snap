@@ -29,7 +29,8 @@ API changes in core:
     + function run(x: number): void
 
 2 errors, 1 warning, 1 info, 1 existing, 1 baselined, 1 waived, 3 fixed (run architect baseline update to lock in progress), 1 unapproved weakening, 1 approved weakening, 2 API changes
-Analyzed 312 files; 2 unmapped, 1 unresolved import, 1 dynamic import
+Analyzed 312 of 400 source files (78%); not analyzed: rust 80, go 8; 2 unmapped, 1 unresolved import, 1 dynamic import.
+Rule no-cycles cannot fire: it evaluated 0 edges.
 "
 `;
 
@@ -89,7 +90,8 @@ dynamic imports:
   src/y.ts:9  import(name)
 
 2 errors, 1 warning, 1 info, 1 existing, 1 baselined, 1 waived, 3 fixed (run architect baseline update to lock in progress), 1 unapproved weakening, 1 approved weakening, 2 API changes
-Analyzed 312 files; 2 unmapped, 1 unresolved import, 1 dynamic import
+Analyzed 312 of 400 source files (78%); not analyzed: rust 80, go 8; 2 unmapped, 1 unresolved import, 1 dynamic import.
+Rule no-cycles cannot fire: it evaluated 0 edges.
 "
 `;
 
@@ -120,7 +122,9 @@ Run \`architect baseline update\` to lock in progress.
 
 #### Coverage
 
-312 files analyzed (python 12, typescript 300); 2 unmapped files, 1 unresolved import, 1 dynamic import, 0 parse errors.
+312 of 400 source files analyzed (python 12, typescript 300); not analyzed: go 8, rust 80; 2 unmapped files, 1 unresolved import, 1 dynamic import, 0 parse errors.
+
+Rule \`no-cycles\` cannot fire: it evaluated 0 edges.
 
 <details>
 <summary>Unmapped files (2)</summary>

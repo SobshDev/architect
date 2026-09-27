@@ -11,10 +11,10 @@ import {
   planInstall,
   type ReadFile,
 } from "../integrations/index.ts";
-import { compareText, type Finding, keyFingerprint } from "../model/index.ts";
+import { compareText, coveragePercent, type Finding, isLowCoverage, keyFingerprint, notAnalyzedText } from "../model/index.ts";
 import { writeRepoFile } from "../store/index.ts";
 import { UsageError } from "./errors.ts";
-import { openWorkspace, requireValidContract, type Workspace } from "./workspace.ts";
+import { analyze, openWorkspace, requireValidContract, type Workspace } from "./workspace.ts";
 
 export interface InstallResult {
   agents: InstallAgent[];
@@ -122,7 +122,14 @@ export async function runInstall(cwd: string, options: { agent: InstallAgent; co
   requireValidContract(ws);
   const disk = diskReader(ws.root);
   const command = options.command?.trim() ?? installedCommand(disk) ?? defaultCommand(disk);
-  return writeGenerated(ws, [options.agent], command);
+  const result = await writeGenerated(ws, [options.agent], command);
+  const { coverage } = await analyze(ws);
+  if (isLowCoverage(coverage)) {
+    result.notes.push(
+      `Architect analyzes only ${coverage.files_analyzed} of ${coverage.source_files} source files (${coveragePercent(coverage)}); not analyzed: ${notAnalyzedText(coverage)}. The hooks check only edits to analyzed files and stay silent on the rest, and the instructions tell agents so. Consider whether the integration is worth its cost here.`,
+    );
+  }
+  return result;
 }
 
 /** Regenerates the files of every installed agent, keeping the command they already use. */

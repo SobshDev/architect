@@ -127,7 +127,7 @@ function matchersOf(resources: readonly Resource[]): LineMatcher[] {
 }
 
 function isComment(trimmed: string, language: Language): boolean {
-  if (language === "python") return trimmed.startsWith("#");
+  if (language === "python" || language === "cargo") return trimmed.startsWith("#");
   return trimmed.startsWith("//") || trimmed.startsWith("/*") || trimmed.startsWith("*");
 }
 

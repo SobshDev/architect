@@ -126,7 +126,7 @@ function introduced(findings: readonly Finding[], snapshot: SessionSnapshot | nu
 // ---------------------------------------------------------------- events
 
 async function sessionStart(ws: Workspace, input: HookInput): Promise<HookResult> {
-  const { graph } = await analyze(ws);
+  const { graph, coverage } = await analyze(ws);
   const findings = openFindings(ws, graph);
   // Only a fresh session takes a snapshot; resume, clear, and compaction keep the original so earlier edits stay visible.
   const existing = await readSnapshot(ws, input.sessionId);
@@ -134,7 +134,7 @@ async function sessionStart(ws: Workspace, input: HookInput): Promise<HookResult
     await writeSnapshot(ws, input.sessionId, { version: 1, head: await headSha(ws.root), counts: errorCounts(findings) });
   }
   const { architecture, rules, decisions } = ws.contract;
-  const brief = sessionBrief({ architecture, rules, decisions, graph, findings });
+  const brief = sessionBrief({ architecture, rules, decisions, graph, findings, coverage });
   return brief.markdown === "" ? {} : { context: brief.markdown };
 }
 

@@ -1,4 +1,4 @@
-import type { ConfigIssue, DecisionStatus, ReportSummary, RuleLevel } from "../model/index.ts";
+import { type ConfigIssue, coveragePercent, type DecisionStatus, isLowCoverage, notAnalyzedText, type ReportSummary, type RuleLevel } from "../model/index.ts";
 import { checkWorkspace } from "./check.ts";
 import { openWorkspace } from "./workspace.ts";
 
@@ -13,7 +13,17 @@ export interface StatusResult {
   };
   baseline: { entries: number; occurrences: number; fixed: number; remaining: number };
   summary: ReportSummary;
-  coverage: { files: number; unmapped: number; unresolved: number; dynamic: number; parseErrors: number };
+  coverage: {
+    files: number;
+    /** Source files in every recognized language, analyzed or not. */
+    sourceFiles: number;
+    notAnalyzed: Record<string, number>;
+    unmapped: number;
+    unresolved: number;
+    dynamic: number;
+    parseErrors: number;
+    inertRules: { rule: string; reason: string }[];
+  };
   issues: ConfigIssue[];
 }
 
@@ -33,10 +43,13 @@ export async function runStatus(cwd: string, options: { today?: string } = {}): 
     summary: report.summary,
     coverage: {
       files: report.coverage.files_analyzed,
+      sourceFiles: report.coverage.source_files,
+      notAnalyzed: report.coverage.not_analyzed,
       unmapped: report.coverage.unmapped_files.length,
       unresolved: report.coverage.unresolved_imports.length,
       dynamic: report.coverage.dynamic_imports.length,
       parseErrors: report.coverage.parse_errors.length,
+      inertRules: report.coverage.inert_rules,
     },
     issues: report.config_issues,
   };
@@ -57,10 +70,18 @@ export function formatStatus(status: StatusResult): string {
     lines.push(`Baseline: ${baseline.occurrences} accepted violations in ${baseline.entries} entries; ${baseline.fixed} fixed (${percent}%), ${baseline.remaining} remaining.`);
     if (baseline.fixed > 0) lines.push("  Run `architect baseline update` to lock in the progress.");
   }
-  lines.push(`Check: ${summary.errors} new errors, ${summary.warnings} new warnings, ${summary.info} notes.`);
+  const counts = { files_analyzed: coverage.files, source_files: coverage.sourceFiles, not_analyzed: coverage.notAnalyzed };
+  const partial = coverage.sourceFiles > coverage.files;
+  const scope = partial ? ` in the ${coveragePercent(counts)} of source files analyzed` : "";
+  lines.push(`Check: ${summary.errors} new errors, ${summary.warnings} new warnings, ${summary.info} notes${scope}.`);
+  const analyzed = partial ? `${coverage.files} of ${coverage.sourceFiles} source files analyzed (${coveragePercent(counts)}); not analyzed: ${notAnalyzedText(counts)}` : `${coverage.files} files analyzed`;
   lines.push(
-    `Coverage: ${coverage.files} files analyzed, ${coverage.unmapped} unmapped, ${coverage.unresolved} unresolved imports, ${coverage.dynamic} dynamic imports, ${coverage.parseErrors} parse errors.`,
+    `Coverage: ${analyzed}. Of the analyzed files: ${coverage.unmapped} unmapped, ${coverage.unresolved} unresolved imports, ${coverage.dynamic} dynamic imports, ${coverage.parseErrors} parse errors.`,
   );
+  if (partial && isLowCoverage(counts)) {
+    lines.push("  Most source files are in languages Architect does not analyze, so rules and metrics describe a sample. History (hotspots, co-change) covers every file.");
+  }
+  for (const inert of coverage.inertRules) lines.push(`Rule ${inert.rule} cannot fire: ${inert.reason}.`);
   for (const issue of status.issues) lines.push(`${issue.level === "error" ? "config error" : "config warning"} ${issue.file}${issue.path ? ` ${issue.path}` : ""}: ${issue.message}`);
   return lines.join("\n");
 }

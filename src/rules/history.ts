@@ -9,7 +9,7 @@ const percent = (n: number) => `${Math.round(n * 100)}%`;
  * Informational findings from change history: component pairs that change together without any import between
  * them (hidden change coupling), and the top hotspots.
  */
-export function historyFindings(history: HistorySummary, graph: Graph, architecture: Architecture): Finding[] {
+export function historyFindings(history: HistorySummary, graph: Graph, architecture: Architecture, options: { partial?: boolean } = {}): Finding[] {
   const index = new ComponentIndex(architecture.components, graph.workspaces);
   const linked = new Set<string>();
   for (const e of componentGraph(graph, index).edges) {
@@ -23,7 +23,9 @@ export function historyFindings(history: HistorySummary, graph: Graph, architect
       rule: "hidden-change-coupling",
       kind: "history",
       level: "info",
-      message: `Components ${pair.a} and ${pair.b} changed together in ${pair.support} commits (confidence ${percent(pair.confidence)}) but neither imports the other.`,
+      message: options.partial
+        ? `Components ${pair.a} and ${pair.b} changed together in ${pair.support} commits (confidence ${percent(pair.confidence)}), and no analyzed import links them (not every source file was analyzed).`
+        : `Components ${pair.a} and ${pair.b} changed together in ${pair.support} commits (confidence ${percent(pair.confidence)}) but neither imports the other.`,
       from: pair.a,
       to: pair.b,
       because: [],
@@ -38,7 +40,7 @@ export function historyFindings(history: HistorySummary, graph: Graph, architect
       rule: "hotspot",
       kind: "history",
       level: "info",
-      message: `${spot.path} is a hotspot: ${spot.churn} lines changed since ${history.since.slice(0, 10)} across a file of ${spot.loc} lines (score ${spot.score}).`,
+      message: `${spot.path} is a hotspot: ${spot.churn} lines changed in ${spot.commits} commits since ${history.since.slice(0, 10)}, in a file of ${spot.loc} lines (score ${spot.score}, in the top quarter of changed files).`,
       ...(component !== null && { from: component }),
       location: { file: spot.path },
       because: [],
